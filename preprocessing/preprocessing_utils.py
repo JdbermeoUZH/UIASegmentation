@@ -30,8 +30,7 @@ def get_subjects_folders(path_to_data):
 
 def find_types_of_aneurysm(aneurysm_classes, name_components):
     '''
-    This function iterate through all the subfolders inside the path_to_data folder
-    and returns a list with all the paths.
+    
 
     Parameters
     ----------
@@ -50,3 +49,9 @@ def find_types_of_aneurysm(aneurysm_classes, name_components):
                 types_of_aneur.append(aneur)
                 break
     return types_of_aneur
+
+def conv_nrrd2nifti(path_test):
+    pass
+
+def conv_dicom2nifti(path_test):
+    pass
