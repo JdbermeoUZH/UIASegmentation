@@ -5,6 +5,14 @@ This script contains helper functions that are used in all stages of the preproc
 '''
 
 import os
+import nrrd
+import shutil
+import dicom2nifti
+import numpy as np
+import pandas as pd
+import nibabel as nib
+import SimpleITK as sitk
+from difflib import SequenceMatcher
 
 
 def get_subjects_folders(path_to_data):
@@ -24,14 +32,12 @@ def get_subjects_folders(path_to_data):
     for mri_file in os.listdir(path_to_data):
         mri_file_path = os.path.join(path_to_data, mri_file)
         if os.path.isdir(mri_file_path) and not mri_file.startswith('.') \
-            and not mri_file.find("unlabelled") != -1:
+            and not mri_file.find("unlabelled") != -1 and not mri_file.find("temp_folder") != -1:
             subjects_paths_list.append(mri_file_path)
     return subjects_paths_list
 
 def find_types_of_aneurysm(aneurysm_classes, name_components):
     '''
-    
-
     Parameters
     ----------
     aneurysm_classes: all classes of aneurysm
@@ -50,8 +56,89 @@ def find_types_of_aneurysm(aneurysm_classes, name_components):
                 break
     return types_of_aneur
 
-def conv_nrrd2nifti(path_test):
+#### functions for correcting labels. Adopted from previous work
+def read_classes_from_nrrd(path):
+    data, header = nrrd.read(path)
+    segment_keys = {}
+    for key in header.keys():
+        if key.startswith('Segment') and key[7].isdigit():
+            segid, cont = key.split('_')
+            index = int(segid[7:])
+            if index not in segment_keys.keys():    segment_keys[index] = {}
+            segment_keys[index][cont] = header[key]
+    label_list = pd.DataFrame.from_dict(segment_keys, orient='index')
+    label_list = label_list[['Name', 'LabelValue']].astype({'LabelValue':int}).sort_values(by=['LabelValue'])
+    return label_list.rename(columns={'Name':'name', 'LabelValue':'label id'})
+
+def match_labels(color_table, class_table):
+    mapping        = {}
+    i              = 0
+    js             = list(range(class_table.shape[0]))
+    matches_ratio  = []
+
+    while len(js) != 0 and i < color_table.shape[0]:
+        matches    = [SequenceMatcher(None, class_table['name'].iloc[j], color_table['name'].iloc[i]).ratio() for j in js]
+        j          = js[matches.index(max(matches))]
+        mapping[j] = [class_table['label id'].iloc[j], color_table['label id'].iloc[i], class_table['name'].iloc[j], color_table['name'].iloc[i]] 
+        i          = i+1
+        js.remove(j)
+        matches_ratio.append(max(matches))
+    
+    if np.mean(matches_ratio) < 0.75:
+        print('Warning: Mapping did not work correctly', np.mean(matches_ratio))
+    
+    for j in js:
+        mapping[j] = [class_table['label id'].iloc[j], None, class_table['name'].iloc[j], None]
+    return mapping
+
+def correct_labels(data, mapping):
+    dtype = data.dtype
+
+def map_labels():
     pass
 
-def conv_dicom2nifti(path_test):
-    pass
+def create_corrected_mask(mri_path, mapping_path, wrong_mask_path):
+
+    label_mapping = pd.read_csv(mapping_path, dtype={'class_id':int,
+                                                     'file_id':float,
+                                                     'class_name':str,
+                                                     'name_in_file':str})
+    nii_wrong_mask = nib.load(wrong_mask_path)
+    data_corr      = correct_labels(nii_wrong_mask.get_fdata(), label_mapping) 
+
+    affine_new     = nii_wrong_mask.affine.copy()
+    # sanity check. Affine matrix from wrong mask and init image match
+
+    nii_corr_mask  = nib.Nifti1Image(data_corr.astype(int), 
+                                     affine_new, 
+                                     nii_wrong_mask.header, 
+                                     dtype = nii_wrong_mask.get_data_dtype())
+    
+    head, tail = os.path.split(wrong_mask_path)
+    nib.save(nii_corr_mask, os.path.join(head, 'corrected_' + tail))
+
+    
+###
+
+def conv_nrrd2nifti(path):
+    head, _         = os.path.split(path)
+    path_components = path.split('/')
+    tof_path        = os.path.join(head, path_components[-2].lower() + '_tof.nii.gz')
+    
+    tof_img         = sitk.ReadImage(path)
+    sitk.WriteImage(tof_img, tof_path)
+    print(f'Saving to: {tof_path}')
+
+def conv_dicom2nifti(path, temp_folder = None):
+    if temp_folder != None:
+        path_components = path.split('/')
+        save_path       = os.path.join(temp_folder, path_components[-1] + '_tof_folder')
+        print("TEST SAVE PATH", save_path)
+        if os.path.exists(save_path) == False:  os.makedirs(save_path)
+        dicom2nifti.convert_directory(path, save_path)
+        files = list(os.listdir(save_path))
+        assert len(files) == 1
+        tof_path = os.path.join(path, path_components[-1].lower() + '_tof.nii.gz')
+        shutil.copy(os.path.join(save_path, files[0]), tof_path)
+        shutil.rmtree(save_path)
+        print(f'Saving from dicom to nifti: {tof_path}')
