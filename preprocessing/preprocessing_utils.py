@@ -92,30 +92,55 @@ def match_labels(color_table, class_table):
     return mapping
 
 def correct_labels(data, mapping):
-    dtype = data.dtype
+    if isinstance(mapping, pd.DataFrame):
+        label_mapping = mapping[['file_id', 'class_id']].dropna(axis='index', how='any').set_index('file_id').to_dict()['class_id']
+    else:
+        label_mapping = mapping 
+    return map_labels(data, label_mapping).astype(int)
 
-def map_labels():
-    pass
+def map_labels(data, label_mapping):
+    l_keys = []
+    for key in label_mapping.keys():
+        if label_mapping[key] != key:
+            l_keys.append(key)
+
+    data_new = np.copy(data)
+    x_dim, y_dim, z_dim = data_new.shape
+    for x in range(x_dim):
+        for y in range(y_dim):
+            for z in range(z_dim):
+                if int(data_new[x,y,z]) in l_keys:
+                    data_new[x,y,z] = int(label_mapping[int(data_new[x,y,z])])
+    return data_new
 
 def create_corrected_mask(mri_path, mapping_path, wrong_mask_path):
-
+    print('Reading label mapping from', mapping_path)
     label_mapping = pd.read_csv(mapping_path, dtype={'class_id':int,
                                                      'file_id':float,
                                                      'class_name':str,
                                                      'name_in_file':str})
+    print('Reading wrong mask from', wrong_mask_path)
     nii_wrong_mask = nib.load(wrong_mask_path)
+    
     data_corr      = correct_labels(nii_wrong_mask.get_fdata(), label_mapping) 
 
     affine_new     = nii_wrong_mask.affine.copy()
     # sanity check. Affine matrix from wrong mask and init image match
+    tof_list       = [i for i in os.listdir(mri_path) if i.lower().find('tof')!=-1 \
+                      and i.lower().endswith('.nii.gz')]
+    assert len(tof_list) == 1
+    tof_image = nib.load(os.path.join(mri_path, tof_list[0]))
+    print(affine_new)
+    print(tof_image.affine)
+    print(tof_image.affine == affine_new)
 
-    nii_corr_mask  = nib.Nifti1Image(data_corr.astype(int), 
-                                     affine_new, 
-                                     nii_wrong_mask.header, 
-                                     dtype = nii_wrong_mask.get_data_dtype())
+    #nii_corr_mask  = nib.Nifti1Image(data_corr.astype(int), 
+    #                                 affine_new, 
+    #                                 nii_wrong_mask.header, 
+    #                                 dtype = nii_wrong_mask.get_data_dtype())
     
-    head, tail = os.path.split(wrong_mask_path)
-    nib.save(nii_corr_mask, os.path.join(head, 'corrected_' + tail))
+    #head, tail = os.path.split(wrong_mask_path)
+    #nib.save(nii_corr_mask, os.path.join(head, 'corrected_' + tail))
 
     
 ###
