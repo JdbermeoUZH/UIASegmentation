@@ -70,13 +70,13 @@ def process_segm_func(paths_list, path_to_original, temp_folder_path):
         
         # compute and save the corrected segmentation mask
         segm_masks_list2 = [i for i in os.listdir(mri_path) if i.lower().find('segmentation')!=-1 \
-                           and (i.lower().endswith('.nii.gz') or i.lower().endswith('.nii'))]
+                           and (i.lower().endswith('.nii.gz') or i.lower().endswith('.nii'))\
+                           and i.lower().find('corrected_') == -1]
         assert len(segm_masks_list2) == 1
 
         pu.create_corrected_mask(mri_path,
                                  os.path.join(mri_path, 'label_assignment2.csv'),
                                  os.path.join(mri_path, segm_masks_list2[0]))
-        break
         ###
 
 def update_fix_dataset(path_to_dataset, path_to_original, process_tofs = True, process_segm = True):
@@ -97,4 +97,4 @@ def update_fix_dataset(path_to_dataset, path_to_original, process_tofs = True, p
     shutil.rmtree(temp_folder_path)
 
 # run the script
-update_fix_dataset(path_to_updated_dataset, path_to_initial_dataset, process_tofs=False, process_segm=True)
+update_fix_dataset(path_to_updated_dataset, path_to_initial_dataset, process_tofs = False, process_segm = True)
