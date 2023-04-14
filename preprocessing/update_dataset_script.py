@@ -97,4 +97,4 @@ def update_fix_dataset(path_to_dataset, path_to_original, process_tofs = True, p
     shutil.rmtree(temp_folder_path)
 
 # run the script
-update_fix_dataset(path_to_updated_dataset, path_to_initial_dataset, process_tofs = False, process_segm = True)
+update_fix_dataset(path_to_updated_dataset, path_to_initial_dataset, process_tofs = True, process_segm = True)

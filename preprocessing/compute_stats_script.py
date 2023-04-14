@@ -11,13 +11,13 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import preprocessing_utils as pu
 
-#--------- paths 
+#---------- paths 
 # hardcode them for now. Later maybe replace them.
 path_to_inter_results   = '/scratch/kvergopoulos/SemesterProject/intermediate_results'
 path_to_dataset_updated = '/scratch/kvergopoulos/SemesterProject/datasets/USZ_BrainArtery_updated'
-#--------- 
+#---------- 
 
-#--------- def functions
+#---------- def functions
 def calculate_distribution_resolution(path_to_data, path_save_results, round_decimal = 0):
     paths_list   = pu.get_subjects_folders(path_to_data)
     voxel_sizes  = list()
@@ -134,7 +134,7 @@ def calculate_distribution_voxelsizes(path_to_data, path_save_results, round_dec
     fig.savefig(os.path.join(path_save_results, 'voxels_dist.png'), bbox_inches='tight')
 
 
-#--------- run functions
+#---------- run functions
 # Assume that the dataset has pass the first step of preprocessing.
 # Meaning that all the important files, are saved as .nii images.
 calculate_distribution_voxelsizes(path_to_dataset_updated, path_to_inter_results, round_decimal = 3)

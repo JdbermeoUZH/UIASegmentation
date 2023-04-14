@@ -5,7 +5,9 @@ This script contains helper functions that are used in all stages of the preproc
 '''
 
 import os
+import sys
 import nrrd
+import time
 import shutil
 import dicom2nifti
 import numpy as np
@@ -14,12 +16,64 @@ import nibabel as nib
 import SimpleITK as sitk
 from difflib import SequenceMatcher
 
-
+#---------- functions for general utilities
 def reorient(nii, orientation):
+    '''
+    This function align the affine matrix of the input image
+    using the input orientation
+
+    Parameters
+    ----------
+    nii: The input Nifti image
+    orientation: The deriser orientation
+    
+    Returns
+    -------
+    nii: The input image with corrected orientation
+    '''
     orig_ornt = nib.io_orientation(nii.affine)
     targ_ornt = nib.orientations.axcodes2ornt(orientation)
     transform = nib.orientations.ornt_transform(orig_ornt, targ_ornt)
     return nii.as_reoriented(transform)
+
+def locate_tof_mask_paths(path_to_data):
+    data_dict = dict()
+    for tfile in os.listdir(path_to_data):
+        file_path = os.path.join(path_to_data, tfile)
+        if os.path.isdir(file_path) and not tfile.startswith('.') \
+        and not tfile.find('unlabelled')!=-1 and not tfile.find('temp_folder')!=-1:
+            all_files = list(os.listdir(file_path))
+            tof_list = [i for i in all_files if i.lower().find('tof') !=-1  \
+                        and i.lower().endswith('.nii.gz')]
+            cor_seg_list = [i for i in all_files if i.lower().find('corrected_') != -1 \
+                        and i.lower().find('real_corrected') == -1]
+            real_seg_list = [i for i in all_files if i.lower().find('corrected_') != -1 \
+                        and i.lower().find('real_corrected') != -1]
+            try:
+                assert len(tof_list) == len(cor_seg_list) == len(real_seg_list) == 1
+            except AssertionError:
+                print(f'Assertion Error: The lists tof_list, seg_list, real_seg_list have lengths',
+                      len(tof_list), len(cor_seg_list), len(real_seg_list))
+                sys.exit()
+
+            subject_name = tof_list[0][:tof_list[0].find('_tof.nii.gz')]
+            data_dict[subject_name] = {'tof': [os.path.join(file_path, tof_list[0])],
+                                       'seg': [os.path.join(file_path, cor_seg_list[0])],
+                                       'real_seg': [os.path.join(file_path, real_seg_list[0])]
+                                       }
+        elif not os.path.isdir(file_path) and (tfile.endswith('.nii') or tfile.endswith('.nii.gz')):
+            # The files must have the following format:
+            # name_tof.xxx for the tof image
+            # name_seg.xxx for the segmentation mask
+            # name_seg_real.xxx only for development purposes
+            if tfile.lower().find('_tof') != -1:
+                pass
+            elif tfile.lower().find('_seg') != -1 and tfile.lower().find('_seg_real') == -1:
+                pass
+            elif tfile.lower().find('_seg_real') != -1:
+                pass
+            else: continue 
+    return data_dict    
 
 def get_subjects_folders(path_to_data):
     '''
@@ -62,6 +116,7 @@ def find_types_of_aneurysm(aneurysm_classes, name_components):
                 break
     return types_of_aneur
 
+#---------- functions for reading/writting
 def read_voxel_from_nii(path_image_nii):
     nii_img    = nib.load(path_image_nii)
     nii_header = nii_img.header.copy()
@@ -72,8 +127,10 @@ def read_dims_from_nii(path_image_nii):
     nii_data   = nii_img.get_fdata()
     return nii_data.shape
 
+def read_all_from_nii(path_image_nii):
+    nii_img = nib.load(path_image_nii)
+    return nii_img.get_fdata(), nii_img.affine.copy(), nii_img.header.copy()
 
-#### functions for correcting labels. Adopted from previous work
 def read_classes_from_nrrd(path):
     data, header = nrrd.read(path)
     segment_keys = {}
@@ -87,6 +144,7 @@ def read_classes_from_nrrd(path):
     label_list = label_list[['Name', 'LabelValue']].astype({'LabelValue':int}).sort_values(by=['LabelValue'])
     return label_list.rename(columns={'Name':'name', 'LabelValue':'label id'})
 
+#---------- functions for correcting labels. Adopted from previous work
 def match_labels(color_table, class_table):
     mapping        = {}
     i              = 0
@@ -135,6 +193,8 @@ def create_corrected_mask(mri_path, mapping_path, wrong_mask_path):
     Maybe use affine matrix of the original matrix to have segmentation in accordance with the
     initial image
     '''
+    path_components = wrong_mask_path.split('/')
+    name            = path_components[-2].lower()
     print('Reading label mapping from', mapping_path)
     label_mapping = pd.read_csv(mapping_path, dtype={'class_id':int,
                                                      'file_id':float,
@@ -177,8 +237,9 @@ def create_corrected_mask(mri_path, mapping_path, wrong_mask_path):
                                      nii_wrong_mask.get_data_dtype())
     '''
     head, tail = os.path.split(wrong_mask_path)
-    print('Saving the new mask in', os.path.join(head, 'corrected_' + tail))
-    nib.save(nii_corr_mask, os.path.join(head, 'corrected_' + tail))
+
+    print('Saving the new mask in', os.path.join(head, name + '_corrected_' + tail))
+    nib.save(nii_corr_mask, os.path.join(head, name + '_corrected_' + tail))
 
     # save also a mask with values the intensities of the vessels, not the labels
     # maybe it will be usefull for the feature maps
@@ -190,10 +251,75 @@ def create_corrected_mask(mri_path, mapping_path, wrong_mask_path):
                                        tof_image.affine.copy(),
                                        tof_image.header,
                                        tof_image.get_data_dtype())
-    print('Saving the new mask in', os.path.join(head, 'real_corrected_' + tail))
-    nib.save(nii_corr_mask_2, os.path.join(head, 'real_corrected_' + tail))
-###
+    print('Saving the new mask in', os.path.join(head, name + '_real_corrected_' + tail))
+    nib.save(nii_corr_mask_2, os.path.join(head, name + '_real_corrected_' + tail))
 
+#---------- functions for preprocessing
+def N4bias_correction_filter(img_init, 
+                             image_mask_flag           = True, 
+                             shrinkFactor              = 1, 
+                             MaximumNumberOfIterations = None):
+    '''
+    following the official documentation:
+    https://simpleitk.readthedocs.io/en/master/link_N4BiasFieldCorrection_docs.html
+    '''
+    # make sure image is 32bit float
+    image      = sitk.Cast(img_init, sitk.sitkFloat32)
+    image_mask = None
+    if image_mask_flag == True: image_mask = sitk.OtsuThreshold(image, 0, 1)
+
+    if shrinkFactor > 1:
+        image      = sitk.Shrink(img_init, [shrinkFactor] * img_init.GetDimension())
+        if image_mask != None:
+            image_mask = sitk.Shrink(image_mask, [shrinkFactor] * img_init.GetDimension()) 
+        
+    corrector = sitk.N4BiasFieldCorrectionImageFilter()
+    corrector.SetNumberOfControlPoints([4,4,4])
+    corrector.SetConvergenceThreshold(1e-6)
+
+    if MaximumNumberOfIterations != None:
+        corrector.SetMaximumNumberOfIterations(MaximumNumberOfIterations)
+    
+    if image_mask != None: corrected_image = corrector.Execute(image, image_mask)
+    else:                  corrected_image = corrector.Execute(image)
+    
+    log_bias_field  = corrector.GetLogBiasFieldAsImage(img_init)
+    log_bias_field  = sitk.Cast(log_bias_field, sitk.sitkFloat64)
+    
+    corrected_image_full = img_init / sitk.Exp(log_bias_field)
+    return corrected_image_full, log_bias_field
+
+def n4_bias_correction(img_path, save_logbias, path_to_save):
+    img = sitk.ReadImage(img_path, sitk.sitkFloat32)
+    start = time.time()
+    img_res1, log_bias1 = N4bias_correction_filter(img, 
+                                                   image_mask_flag           = True, 
+                                                   shrinkFactor              = 4, 
+                                                   MaximumNumberOfIterations = [200,150,100])
+    end = time.time()
+    print("N4 bias correction with shrink=4 ends in", end - start)
+    
+    start = time.time()
+    img_res2, log_bias2 = N4bias_correction_filter(img_res1, 
+                                                   image_mask_flag           = True, 
+                                                   shrinkFactor              = 2, 
+                                                   MaximumNumberOfIterations = [150, 100, 70])
+    end = time.time()
+    print("N4 bias correction with shrink=2 ends in", end - start)
+    
+    '''
+    start = time.time()
+    img_res3, log_bias3 = N4bias_correction_filter(img_res2, 
+                                                   image_mask_flag           = True, 
+                                                   shrinkFactor              = 1, 
+                                                   MaximumNumberOfIterations = [50, 50, 50, 50])
+    end = time.time()
+    print("N4 bias correction with shrink=1 ends in", end - start) 
+    '''
+    return img_res2
+
+
+#---------- functions for converting/saving file formats
 def conv_nrrd2nifti(path):
     head, _         = os.path.split(path)
     path_components = path.split('/')
