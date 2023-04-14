@@ -32,7 +32,7 @@ def get_subjects_folders(path_to_data):
 
     Returns
     -------
-    list of paths to each subject
+    subjects_paths_list: list of paths to each subject
     '''
     subjects_paths_list = list()
     for mri_file in os.listdir(path_to_data):
@@ -61,6 +61,17 @@ def find_types_of_aneurysm(aneurysm_classes, name_components):
                 types_of_aneur.append(aneur)
                 break
     return types_of_aneur
+
+def read_voxel_from_nii(path_image_nii):
+    nii_img    = nib.load(path_image_nii)
+    nii_header = nii_img.header.copy()
+    return nii_header.get_zooms()
+
+def read_dims_from_nii(path_image_nii):
+    nii_img    = nib.load(path_image_nii)
+    nii_data   = nii_img.get_fdata()
+    return nii_data.shape
+
 
 #### functions for correcting labels. Adopted from previous work
 def read_classes_from_nrrd(path):
@@ -157,15 +168,24 @@ def create_corrected_mask(mri_path, mapping_path, wrong_mask_path):
                                      tof_image.affine.copy(), 
                                      tof_image.header, 
                                      nii_wrong_mask.get_data_dtype())
-    
+    '''
+    this is the correct, because nii_corr_mask is created based on nii_wrong_mask.
+    Even though, both implementations must give the same results
+    nii_corr_mask = nib.Nifti1Image(data_corr.astype(int), 
+                                     affine_new.copy(), 
+                                     nii_wrong_mask.header, 
+                                     nii_wrong_mask.get_data_dtype())
+    '''
     head, tail = os.path.split(wrong_mask_path)
     print('Saving the new mask in', os.path.join(head, 'corrected_' + tail))
     nib.save(nii_corr_mask, os.path.join(head, 'corrected_' + tail))
 
     # save also a mask with values the intensities of the vessels, not the labels
-    # maybe it will be usefull for the feature maps.
+    # maybe it will be usefull for the feature maps
     tof_image_data   = tof_image.get_fdata().copy()
     data_corr_2      = np.where(data_corr > 0, tof_image_data, 0)
+    # this seg mask is created based on tof image. So, it's better
+    # to use tof's image header.
     nii_corr_mask_2  = nib.Nifti1Image(data_corr_2,
                                        tof_image.affine.copy(),
                                        tof_image.header,
