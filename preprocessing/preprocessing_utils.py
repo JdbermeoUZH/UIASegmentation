@@ -6,6 +6,7 @@ This script contains helper functions that are used in all stages of the preproc
 
 import os
 import sys
+import h5py
 import nrrd
 import time
 import shutil
@@ -66,12 +67,34 @@ def locate_tof_mask_paths(path_to_data):
             # name_tof.xxx for the tof image
             # name_seg.xxx for the segmentation mask
             # name_seg_real.xxx only for development purposes
+            subject_name = ''
             if tfile.lower().find('_tof') != -1:
-                pass
+                subject_name = tfile[:tfile.lower().find('_tof')]
+                if subject_name in list(data_dict.keys()): 
+                    data_dict[subject_name]['tof'].append(file_path)
+                else:
+                    data_dict[subject_name] = {'tof': [file_path],
+                                               'seg': [],
+                                               'real_seg': []
+                                               }
             elif tfile.lower().find('_seg') != -1 and tfile.lower().find('_seg_real') == -1:
-                pass
+                subject_name = tfile[:tfile.lower().find('_seg')]
+                if subject_name in list(data_dict.keys()): 
+                    data_dict[subject_name]['seg'].append(file_path)
+                else:
+                    data_dict[subject_name] = {'tof': [],
+                                               'seg': [file_path],
+                                               'real_seg': []
+                                               }
             elif tfile.lower().find('_seg_real') != -1:
-                pass
+                subject_name = tfile[:tfile.lower().find('_seg_real')]
+                if subject_name in list(data_dict.keys()): 
+                    data_dict[subject_name]['real_seg'].append(file_path)
+                else:
+                    data_dict[subject_name] = {'tof': [],
+                                               'seg': [],
+                                               'real_seg': [file_path]
+                                               }
             else: continue 
     return data_dict    
 
@@ -255,6 +278,13 @@ def create_corrected_mask(mri_path, mapping_path, wrong_mask_path):
     nib.save(nii_corr_mask_2, os.path.join(head, name + '_real_corrected_' + tail))
 
 #---------- functions for preprocessing
+def global_thresholding(img, threshold = 0):
+    mask = np.where(img < threshold, 0, img)
+    return mask
+
+def local_thresholding():
+    pass
+
 def N4bias_correction_filter(img_init, 
                              image_mask_flag           = True, 
                              shrinkFactor              = 1, 
@@ -264,14 +294,15 @@ def N4bias_correction_filter(img_init,
     https://simpleitk.readthedocs.io/en/master/link_N4BiasFieldCorrection_docs.html
     '''
     # make sure image is 32bit float
-    image      = sitk.Cast(img_init, sitk.sitkFloat32)
+    inputImg   = sitk.Cast(img_init, sitk.sitkFloat32)
+    image      = inputImg
     image_mask = None
     if image_mask_flag == True: image_mask = sitk.OtsuThreshold(image, 0, 1)
 
     if shrinkFactor > 1:
-        image      = sitk.Shrink(img_init, [shrinkFactor] * img_init.GetDimension())
+        image      = sitk.Shrink(inputImg, [shrinkFactor] * inputImg.GetDimension())
         if image_mask != None:
-            image_mask = sitk.Shrink(image_mask, [shrinkFactor] * img_init.GetDimension()) 
+            image_mask = sitk.Shrink(image_mask, [shrinkFactor] * inputImg.GetDimension()) 
         
     corrector = sitk.N4BiasFieldCorrectionImageFilter()
     corrector.SetNumberOfControlPoints([4,4,4])
@@ -283,40 +314,48 @@ def N4bias_correction_filter(img_init,
     if image_mask != None: corrected_image = corrector.Execute(image, image_mask)
     else:                  corrected_image = corrector.Execute(image)
     
-    log_bias_field  = corrector.GetLogBiasFieldAsImage(img_init)
+    log_bias_field  = corrector.GetLogBiasFieldAsImage(inputImg)
     log_bias_field  = sitk.Cast(log_bias_field, sitk.sitkFloat64)
     
     corrected_image_full = img_init / sitk.Exp(log_bias_field)
     return corrected_image_full, log_bias_field
 
-def n4_bias_correction(img_path, save_logbias, path_to_save):
-    img = sitk.ReadImage(img_path, sitk.sitkFloat32)
+def n4_bias_correction(img_path, name, save_logs, path_to_save_logs):
+    #maybe this way of reading add a very small dev. Think to make an image using the arr
+    img   = sitk.ReadImage(img_path, sitk.sitkFloat64)
+
     start = time.time()
-    img_res1, log_bias1 = N4bias_correction_filter(img, 
-                                                   image_mask_flag           = True, 
-                                                   shrinkFactor              = 4, 
-                                                   MaximumNumberOfIterations = [200,150,100])
+    img_res, log_bias = N4bias_correction_filter(img, 
+                                                 image_mask_flag           = True, 
+                                                 shrinkFactor              = 4, 
+                                                 MaximumNumberOfIterations = [10,10,10])
     end = time.time()
     print("N4 bias correction with shrink=4 ends in", end - start)
-    
+    '''
     start = time.time()
-    img_res2, log_bias2 = N4bias_correction_filter(img_res1, 
-                                                   image_mask_flag           = True, 
-                                                   shrinkFactor              = 2, 
-                                                   MaximumNumberOfIterations = [150, 100, 70])
+    img_res, log_bias = N4bias_correction_filter(img_res, 
+                                                 image_mask_flag           = True, 
+                                                 shrinkFactor              = 2, 
+                                                 MaximumNumberOfIterations = [150, 100, 70])
     end = time.time()
     print("N4 bias correction with shrink=2 ends in", end - start)
     
-    '''
+    
     start = time.time()
-    img_res3, log_bias3 = N4bias_correction_filter(img_res2, 
-                                                   image_mask_flag           = True, 
-                                                   shrinkFactor              = 1, 
-                                                   MaximumNumberOfIterations = [50, 50, 50, 50])
+    img_res, log_bias = N4bias_correction_filter(img_res, 
+                                                 image_mask_flag           = True, 
+                                                 shrinkFactor              = 1, 
+                                                 MaximumNumberOfIterations = [50, 50, 50])
     end = time.time()
     print("N4 bias correction with shrink=1 ends in", end - start) 
     '''
-    return img_res2
+    # save log bias
+    if save_logs == True:
+        logbias_dir = os.path.join(path_to_save_logs, "n4_log_bias")
+        if os.path.exists(logbias_dir) == False: os.makedirs(logbias_dir)
+        save_npy_img(sitk.GetArrayFromImage(log_bias).T,
+                     os.path.join(logbias_dir, 'n4_bias_'+ name + '.npy'))
+    return sitk.GetArrayFromImage(img_res).T
 
 
 #---------- functions for converting/saving file formats
@@ -349,3 +388,11 @@ def conv_dicom2nifti(path, temp_folder = None):
         shutil.copy(os.path.join(save_path, files[0]), tof_path)
         shutil.rmtree(save_path)
         print(f'Saving from dicom to nifti: {tof_path}')
+
+def save_nii_img(nifti_image, path_to_save):
+    nib.save(nifti_image, path_to_save)
+
+def save_npy_img(npy_image, path_to_save):
+    np.save(path_to_save, npy_image)
+
+def save_hdf5_img(img_data, img_aff, img_header):
