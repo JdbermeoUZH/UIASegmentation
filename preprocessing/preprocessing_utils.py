@@ -21,7 +21,6 @@ from nipype.interfaces import fsl
 from difflib import SequenceMatcher
 
 import skimage
-#from deepbrain import Extractor
 from scipy.signal import medfilt
 from skimage.morphology import binary_closing, binary_opening
 
@@ -376,17 +375,6 @@ def skull_stripping(img_path, name, sk_dir):
     #bet.robust        = True
     # Run the BET interface object
     bet.run()
-    return
-
-def skull_stripping2(img_path, name, sk_dir):
-    
-    tof_img_data, tof_img_aff, tof_img_header = read_all_from_nii(img_path)
-    output_path = os.path.join(sk_dir, name + '_tof.nii.gz') 
-    ext   = Extractor()
-    probs = ext.run(tof_img_data) 
-    output_img_data = np.where(probs <= 0.5, 0, tof_img_data)
-    save_nii_img(nib.Nifti1Image(output_img_data, tof_img_aff, tof_img_header), 
-                 output_path)
     return
 
 def global_thresholding(img, threshold = 0):

@@ -3,11 +3,12 @@ This is the main step of preprocessing. We assume that the dataset is already cl
 so all tof files have been in nii format and the segmentation masks are corrected.
 
 The aims of this script are:
-1) N4-bias correction
-2) Skull stripping
-3) Thresholding (either global thresholding or local adaptive thresholding)
-4) Reshape & rescale tof images and segmentation masks
-5) Save both segmentation and thresholded images in hdf5, nii.gz, .npy format 
+1) Remove 10 lower brain slices
+2) N4-bias correction
+3) Skull stripping
+4) Thresholding (either global thresholding or local adaptive thresholding)
+5) Reshape & rescale tof images and segmentation masks
+6) Save both segmentation and thresholded images in hdf5 format and also some stats
 in a new folder containing only the images.
 '''
 
@@ -19,7 +20,7 @@ import preprocessing_utils as pu
 
 #---------- paths & hyperparameters
 # hardcode them for now. Later maybe replace them.
-multi_proc                = True
+multi_proc                = False
 n_threads                 = 4
 apply_n4_bias             = False
 apply_enchancement        = False
@@ -116,12 +117,11 @@ def preprocess_file(file_idx,
 
     # reshaping and rescaling
     if apply_resc:
-        tof_img_data, tof_img_aff, tof_img_header = pu.adjust_shapes(nib.Nifti1Image(tof_img_data, 
-                                                                                    tof_img_aff, 
-                                                                                    tof_img_header),
-                                                                    new_voxel_size,
-                                                                    new_dimensions
-                                                                    )
+        tof_img_data,\
+        tof_img_aff, \
+        tof_img_header = pu.adjust_shapes(nib.Nifti1Image(tof_img_data, tof_img_aff, tof_img_header),
+                                          new_voxel_size,
+                                          new_dimensions)
     # save final images ready for training
     if save_dir != '':
         pu.create_dir(save_dir, lock, multipreproc)
@@ -129,17 +129,17 @@ def preprocess_file(file_idx,
         # save images and masks in both hdf5 and nii format
         pu.save_nii_img(nib.Nifti1Image(tof_img_data, tof_img_aff, tof_img_header), 
                         os.path.join(save_dir, name_key + '_tof.nii.gz'))
-        #pu.save_hdf5_img(tof_img_data, tof_img_aff, tof_img_header,
-        #                 os.path.join(save_dir, name_key + '_tof.h5'))
+        pu.save_hdf5_img(tof_img_data, tof_img_aff, tof_img_header,
+                         os.path.join(save_dir, name_key + '_tof.h5'))
         pu.save_nii_img(nib.Nifti1Image(seg_img_data, seg_img_aff, seg_img_header), 
                         os.path.join(save_dir, name_key + '_seg.nii.gz'))
-        #pu.save_hdf5_img(seg_img_data, seg_img_aff, seg_img_header,
-        #                 os.path.join(save_dir, name_key + '_seg.h5'))
+        pu.save_hdf5_img(seg_img_data, seg_img_aff, seg_img_header,
+                         os.path.join(save_dir, name_key + '_seg.h5'))
         if subjects_dict[name_key]['real_seg'] != []: 
             pu.save_nii_img(nib.Nifti1Image(seg_real_data, seg_real_aff, seg_real_header), 
                             os.path.join(save_dir, name_key + '_seg_real.nii.gz'))
-            #pu.save_hdf5_img(seg_real_data, seg_real_aff, seg_img_header,
-            #                 os.path.join(save_dir, name_key + '_seg_real.h5'))
+            pu.save_hdf5_img(seg_real_data, seg_real_aff, seg_img_header,
+                             os.path.join(save_dir, name_key + '_seg_real.h5'))
 
 def run_process(subjects_tofs_segm_dict, apply_n4_bias, apply_skull_stripping,apply_thresholding_gl,
                                                                           global_threshold,
@@ -201,6 +201,8 @@ if __name__ == '__main__':
                             voxel_size,
                             dimensions,
                             )
+            # remove this line
+            if idx>4: break
     else:
         # use a Manager object to create a shared 'Lock' object
         manager    = multiprocessing.Manager()
