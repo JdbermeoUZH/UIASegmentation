@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 import SimpleITK as sitk
+import nibabel.processing
 from nipype.interfaces import fsl
 from difflib import SequenceMatcher
 
@@ -65,25 +66,23 @@ def locate_tof_mask_paths(path_to_data):
                         and i.lower().endswith('.nii.gz')]
             cor_seg_list = [i for i in all_files if i.lower().find('corrected_') != -1 \
                         and i.lower().find('real_corrected') == -1]
-            real_seg_list = [i for i in all_files if i.lower().find('corrected_') != -1 \
-                        and i.lower().find('real_corrected') != -1]
             try:
-                assert len(tof_list) == len(cor_seg_list) == len(real_seg_list) == 1
+                assert len(tof_list) == len(cor_seg_list) == 1
             except AssertionError:
                 print(f'Assertion Error: The lists tof_list, seg_list, real_seg_list have lengths',
-                      len(tof_list), len(cor_seg_list), len(real_seg_list))
+                      len(tof_list), len(cor_seg_list))
                 sys.exit()
 
             subject_name = tof_list[0][:tof_list[0].find('_tof.nii.gz')]
             data_dict[subject_name] = {'tof': [os.path.join(file_path, tof_list[0])],
                                        'seg': [os.path.join(file_path, cor_seg_list[0])],
-                                       'real_seg': [os.path.join(file_path, real_seg_list[0])]
+                                       'mask':[]
                                        }
         elif not os.path.isdir(file_path) and (tfile.endswith('.nii') or tfile.endswith('.nii.gz')):
             # The files must have the following format:
             # name_tof.xxx for the tof image
             # name_seg.xxx for the segmentation mask
-            # name_seg_real.xxx only for development purposes
+            # name_mask.xxx for the thresholded mask or intermediate mask
             subject_name = ''
             if tfile.lower().find('_tof') != -1:
                 subject_name = tfile[:tfile.lower().find('_tof')]
@@ -92,7 +91,7 @@ def locate_tof_mask_paths(path_to_data):
                 else:
                     data_dict[subject_name] = {'tof': [file_path],
                                                'seg': [],
-                                               'real_seg': []
+                                               'mask': []
                                                }
             elif tfile.lower().find('_seg') != -1 and tfile.lower().find('_seg_real') == -1:
                 subject_name = tfile[:tfile.lower().find('_seg')]
@@ -101,18 +100,20 @@ def locate_tof_mask_paths(path_to_data):
                 else:
                     data_dict[subject_name] = {'tof': [],
                                                'seg': [file_path],
-                                               'real_seg': []
+                                               'mask': []
                                                }
-            elif tfile.lower().find('_seg_real') != -1:
-                subject_name = tfile[:tfile.lower().find('_seg_real')]
-                if subject_name in list(data_dict.keys()): 
-                    data_dict[subject_name]['real_seg'].append(file_path)
+            elif tfile.lower().find('_mask') != -1:
+                subject_name = tfile[:tfile.lower().find('_mask')]
+                if subject_name in list(data_dict.keys()):
+                    data_dict[subject_name]['mask'].append(file_path)
                 else:
                     data_dict[subject_name] = {'tof': [],
                                                'seg': [],
-                                               'real_seg': [file_path]
-                                               }
-            else: continue 
+                                               'mask': [file_path]
+                                              }
+            else:
+                print(f'Warning: Couldnt locate files for {tfile}') 
+                continue 
     return data_dict    
 
 def get_subjects_folders(path_to_data):
@@ -295,24 +296,70 @@ def create_corrected_mask(mri_path, mapping_path, wrong_mask_path):
     nib.save(nii_corr_mask_2, os.path.join(head, name + '_real_corrected_' + tail))
 
 #---------- functions for preprocessing
+def remove_slices(name, img_path, seg_path, mask_path, n_slices, r_dir):
+    
+    img_nii          = nib.load(img_path)
+    cropped_img_nii  = img_nii.slicer[:, :, n_slices+1:]
+    cropped_img_path = os.path.join(r_dir, name + '_tof.nii.gz')
+    save_nii_img(cropped_img_nii, cropped_img_path)
+    
+    seg_nii          = nib.load(seg_path)
+    cropped_seg_nii  = seg_nii.slicer[:, :, n_slices+1:]
+    cropped_seg_path = os.path.join(r_dir, name + '_seg.nii.gz')
+    save_nii_img(cropped_seg_nii, cropped_seg_path)
+    
+    cropped_mask_path = ''
+    if mask_path != '':
+        mask_nii = nib.load(mask_path)
+        cropped_mask_nii  = mask_nii.slicer[:, :, n_slices+1:]
+        cropped_mask_path = os.path.join(r_dir, name + '_mask.nii.gz')
+        save_nii_img(cropped_mask_nii, cropped_mask_path)
+        
+    return cropped_img_path, cropped_seg_path, cropped_mask_path
+
 def adjust_shapes(nii_img, new_voxel_size, new_dimensions=None):
     old_dims       = nii_img.header["dim"][1:4]
     old_voxel_size = nii_img.header["pixdim"][1:4]
     assert len(old_dims) == len(old_voxel_size) == len(new_voxel_size)
     
     # new shape due to voxel changing
-    if new_dimensions != None:
-        new_nii_img = nib.processing.conform(nii_img, 
-                                             voxel_size = new_voxel_size, 
-                                             out_shape = new_dimensions, 
-                                             order = 0, cval=0, orientation='LPS')
+    if not isinstance(new_dimensions, type(None)):
+        new_nii_img = nibabel.processing.conform(nii_img, 
+                                                 voxel_size = new_voxel_size, 
+                                                 out_shape = new_dimensions, 
+                                                 order = 0, cval=0, orientation='LPS')
     else:
         new_dimensions = [old_dims[i] * old_voxel_size[i]/new_voxel_size[i] for i in range(len(new_voxel_size))]
-        new_nii_img = nib.processing.conform(nii_img, 
-                                             voxel_size = new_voxel_size, 
-                                             out_shape = new_dimensions, 
-                                             order = 0, cval=0, orientation='LPS')
+        new_nii_img = nibabel.processing.conform(nii_img,
+                                                 voxel_size = new_voxel_size, 
+                                                 out_shape = new_dimensions, 
+                                                 order = 0, cval=0, orientation='LPS')
     return new_nii_img.get_fdata(), new_nii_img.affine, new_nii_img.header
+
+def save_for_deep_learning(name, img_path, seg_path, mask_path, f_dir, apply_resc, new_vox_size, new_dims=None, lock= None, multipreproc = None):
+    
+    assert img_path != '' and seg_path != '' and mask_path != '', 'Saving for deep learning some paths are empty'
+
+    img_data, img_aff, img_header = read_all_from_nii(img_path)
+    if apply_resc:
+        img_data, img_aff, img_header = adjust_shapes(nib.load(img_path), new_vox_size, new_dims) 
+    new_img_path = os.path.join(f_dir, name + '_tof.h5')
+    save_hdf5_img(img_data, img_aff, img_header, new_img_path)
+    del img_data, img_aff, img_header
+
+    seg_data, seg_aff, seg_header = read_all_from_nii(seg_path)
+    if apply_resc:
+        seg_data, seg_aff, seg_header = adjust_shapes(nib.load(seg_path), new_vox_size, new_dims) 
+    new_seg_path = os.path.join(f_dir, name + '_seg.h5')
+    save_hdf5_img(seg_data, seg_aff, seg_header, new_seg_path)
+    del seg_data, seg_aff, seg_header
+
+    msk_data, msk_aff, msk_header = read_all_from_nii(mask_path)
+    if apply_resc:
+        msk_data, msk_aff, msk_header = adjust_shapes(nib.load(mask_path), new_vox_size, new_dims) 
+    new_mask_path = os.path.join(f_dir, name + '_mask.h5')
+    save_hdf5_img(msk_data, msk_aff, msk_header, new_mask_path)
+    del msk_data, msk_aff, msk_header
 
 def rescale_intensity(volume, percentils=[0.5, 99.5], bins_num=256):
     obj_volume = volume[np.where(volume > 0)]
@@ -342,7 +389,7 @@ def equalize_hist(volume, bins_num=256):
     volume[np.where(volume > 0)] = obj_volume
     return volume
 
-def enchance(img_data, img_aff, img_header, name, save_path):
+def enchance(img_data):
     kernel_size = 3
     percentils  = [0.5, 99.8]
     bins_num    = 0
@@ -351,20 +398,40 @@ def enchance(img_data, img_aff, img_header, name, save_path):
     img_data    = denoise(img_data, kernel_size)
     img_data    = rescale_intensity(img_data, percentils, bins_num)
     if eh == True:  img_data = equalize_hist(img_data, bins_num)
-    save_nii_img(nib.Nifti1Image(img_data, img_aff, img_header),
-                os.path.join(save_path, name + '_tof.nii.gz'))
-    return img_data, os.path.join(save_path, name + '_tof.nii.gz')
+    return img_data
+
+def enchance_interface(name, img_path, seg_path, mask_path, ench_dir, save_logs, path_logs, lock, multipreproc):
+
+    img_nii      = nib.load(img_path)
+    new_img_path = os.path.join(ench_dir, name + '_tof.nii.gz')
+    save_nii_img(img_nii, new_img_path)
+    del img_nii
+
+    seg_nii      = nib.load(seg_path)
+    new_seg_path = os.path.join(ench_dir, name + '_seg.nii.gz')
+    save_nii_img(seg_nii, new_seg_path)
+    del seg_nii
+
+    if mask_path  == '':
+        print("Inside enchance interface, mask path is empty")
+        mask_data, mask_affine, mask_header = read_all_from_nii(img_path)
+    else:
+        mask_data, mask_affine, mask_header = read_all_from_nii(mask_path)
+    mask_data     = enchance(mask_data)
+    new_mask_path = os.path.join(ench_dir, name + '_mask.nii.gz')
+    save_nii_img(nib.Nifti1Image(mask_data, mask_affine, mask_header),
+                 new_mask_path)
+    
+    return new_img_path, new_seg_path, new_mask_path
 
 def skull_stripping(img_path, name, sk_dir):
     # Set up the BET interface object
     bet = fsl.BET()
-
     # Set the input image file path
     bet.inputs.in_file = img_path
     # Set the output file path and name
-    output_path         = os.path.join(sk_dir, name + '_tof.nii.gz') 
+    output_path         = os.path.join(sk_dir, name + '_mask.nii.gz') 
     bet.inputs.out_file = output_path
-    
     # Set the fractional intensity threshold (0.1 by default)
     bet.inputs.frac = 0.05
     # Set the vertical gradient in fractional intensity below 
@@ -375,7 +442,39 @@ def skull_stripping(img_path, name, sk_dir):
     #bet.robust        = True
     # Run the BET interface object
     bet.run()
-    return
+    return output_path
+
+def skstrip_bet_interface(name, img_path, seg_path, mask_path, sk_dir, save_logs, path_logs, lock, multipreproc, flag = False):
+    
+    seg_nii      = nib.load(seg_path)
+    new_seg_path = os.path.join(sk_dir, name + '_seg.nii.gz')
+    save_nii_img(seg_nii, new_seg_path)
+    del seg_nii
+    
+    if mask_path != '':
+        new_mask_path = skull_stripping(mask_path, name, sk_dir)
+    else:
+        new_mask_path = skull_stripping(img_path, name, sk_dir)
+    
+    new_img_path = os.path.join(sk_dir, name + '_tof.nii.gz')
+    if flag == False:
+        # save the initial image without any change
+        img_nii      = nib.load(img_path)
+        save_nii_img(img_nii, new_img_path)
+        del img_nii
+    else:
+        img_data, img_affine, img_header = read_all_from_nii(img_path)
+        msk_data, msk_affine, msk_header = read_all_from_nii(new_mask_path)
+        try: 
+            assert msk_data.shape == img_data.shape
+        except AssertionError as msg:
+            print('ERROR: Inside skstrip_bet_interface mask and init image mismatch')
+            raise IndexError
+        img_data_new = np.where(msk_data>0, img_data, 0)
+        save_nii_img(nib.Nifti1Image(img_data_new, img_affine, img_header), 
+                     new_img_path)
+    
+    return new_img_path, new_seg_path, new_mask_path
 
 def global_thresholding(img, threshold = 0):
     mask = np.where(img < threshold, 0, img)
@@ -395,6 +494,35 @@ def global_thresholding2(img, threshold_percentile):
     mask       = scipy.ndimage.binary_closing(mask, np.ones((selem_size, selem_size, selem_size)))
     #mask       = extended_closing(mask, 30, np.ones((selem_size, selem_size, selem_size)))
     return mask
+
+def gl_threshold_interface(name, img_path, seg_path, mask_path, th_dir, save_logs, path_logs, th_version, gl_th, lock, multipreproc):
+
+    seg_nii      = nib.load(seg_path)
+    new_seg_path = os.path.join(th_dir, name + '_seg.nii.gz')
+    save_nii_img(seg_nii, new_seg_path)
+    del seg_nii
+
+    img_nii      = nib.load(img_path)
+    new_img_path = os.path.join(th_dir, name + '_tof.nii.gz')
+    save_nii_img(img_nii, new_img_path)
+    del img_nii
+
+    if mask_path != '':
+        mask_data, mask_affine, mask_header = read_all_from_nii(mask_path)
+    else:
+        mask_data, mask_affine, mask_header = read_all_from_nii(img_path)
+
+    if th_version == 1:
+        mask_data = global_thresholding(mask_data, 
+                                        np.percentile(mask_data, gl_th))
+    if th_version == 2:
+        mask_data = global_thresholding2(mask_data, gl_th)
+    
+    new_mask_path = os.path.join(th_dir, name + '_mask.nii.gz')
+    save_nii_img(nib.Nifti1Image(mask_data, mask_affine, mask_header),
+                 new_mask_path)
+    
+    return new_img_path, new_seg_path, new_mask_path
 
 def local_thresholding():
     pass
@@ -435,41 +563,76 @@ def N4bias_correction_filter(img_init,
     return corrected_image_full, log_bias_field
 
 def n4_bias_correction(img_path, name, save_logs, path_to_save_logs, lock = None, multipreproc = False):
-    #maybe this way of reading add a very small dev. Think to make an image using the arr
-    img   = sitk.ReadImage(img_path, sitk.sitkFloat64)
-
-    start = time.time()
-    img_res, log_bias = N4bias_correction_filter(img, 
-                                                 image_mask_flag           = True, 
-                                                 shrinkFactor              = 4, 
-                                                 MaximumNumberOfIterations = [200,200,200])
-    end = time.time()
-    print("N4 bias correction ", name, " with shrink=4 ends in", end - start)
-    
-    start = time.time()
-    img_res, log_bias = N4bias_correction_filter(img_res, 
-                                                 image_mask_flag           = True, 
-                                                 shrinkFactor              = 2, 
-                                                 MaximumNumberOfIterations = [200, 200, 200])
-    end = time.time()
-    print("N4 bias correction ", name, " with shrink=2 ends in", end - start)
-    
-    
-    start = time.time()
-    img_res, log_bias = N4bias_correction_filter(img_res, 
-                                                 image_mask_flag           = True, 
-                                                 shrinkFactor              = 1, 
-                                                 MaximumNumberOfIterations = [50, 50, 50])
-    end = time.time()
-    print("N4 bias correction ", name, " with shrink=1 ends in", end - start) 
 
     # save log bias
     if save_logs == True:
         logbias_dir = os.path.join(path_to_save_logs, "n4_log_bias")
         create_dir(logbias_dir, lock, multipreproc)
-        save_npy_img(sitk.GetArrayFromImage(log_bias).T,
-                     os.path.join(logbias_dir, 'n4_bias_'+ name + '.npy'))
+    
+    img   = sitk.ReadImage(img_path, sitk.sitkFloat64)
+    start = time.time()
+    img_res, log_bias2 = N4bias_correction_filter(img, 
+                                                  image_mask_flag           = True, 
+                                                  shrinkFactor              = 2, 
+                                                  MaximumNumberOfIterations = [200, 200, 200])
+    end = time.time()
+    print("N4 bias correction ", name, " with shrink=2 ends in", end - start)
+    if save_logs == True:
+        save_npy_img(sitk.GetArrayFromImage(log_bias2).T,
+                     os.path.join(logbias_dir, 'n4_bias_'+ name + '_2.npy'))
+    del img
+    del log_bias2
+    '''
+    start = time.time()
+    img_res, log_bias2 = N4bias_correction_filter(img_res, 
+                                                 image_mask_flag           = True, 
+                                                 shrinkFactor              = 2, 
+                                                 MaximumNumberOfIterations = [200, 200, 200])
+    end = time.time()
+    print("N4 bias correction ", name, " with shrink=2 ends in", end - start)
+    if save_logs == True:
+        # save log bias 2
+        save_npy_img(sitk.GetArrayFromImage(log_bias2).T,
+                     os.path.join(logbias_dir, 'n4_bias_'+ name + '_2.npy'))
+    del log_bias2
+
+    start = time.time()
+    img_res, log_bias1 = N4bias_correction_filter(img_res, 
+                                                 image_mask_flag           = True, 
+                                                 shrinkFactor              = 1, 
+                                                 MaximumNumberOfIterations = [50, 50, 50])
+    end = time.time()
+    print("N4 bias correction ", name, " with shrink=1 ends in", end - start) 
+    if save_logs == True:
+        # save log bias 1
+        save_npy_img(sitk.GetArrayFromImage(log_bias1).T,
+                     os.path.join(logbias_dir, 'n4_bias_'+ name + '_1.npy'))
+    del log_bias1
+    '''
     return sitk.GetArrayFromImage(img_res).T
+
+def n4_bias_correction_interface(name, img_path, seg_path, mask_path, n4_dir, save_logs, path_logs, lock, multipreproc):
+
+    seg_nii      = nib.load(seg_path)
+    new_seg_path = os.path.join(n4_dir, name + '_seg.nii.gz')
+    save_nii_img(seg_nii, new_seg_path)
+    del seg_nii
+
+    if mask_path != '':
+        mask_data = n4_bias_correction(mask_path, name, save_logs, path_logs, lock, multipreproc)
+    else:
+        mask_data = n4_bias_correction(img_path, name, save_logs, path_logs, lock, multipreproc)
+    
+    img_nii      = nib.load(img_path)
+    new_img_path = os.path.join(n4_dir, name + '_tof.nii.gz')
+    save_nii_img(img_nii, new_img_path)
+    
+
+    new_mask_path = os.path.join(n4_dir, name + '_mask.nii.gz')
+    save_nii_img(nib.Nifti1Image(mask_data, img_nii.affine.copy(), img_nii.header.copy()), 
+                 new_mask_path)
+    
+    return new_img_path, new_seg_path, new_mask_path
 
 #---------- functions for evaluating coarse masks
 def binarize(image, threshold = 0):
@@ -529,4 +692,4 @@ def save_hdf5_img(img_data, img_aff, img_header, path_to_save):
     with h5py.File(path_to_save, 'w') as f:
         dset = f.create_dataset('data', data=img_data)
         # maybe useless
-        dset.attrs['affine'] = img_aff
+        #dset.attrs['affine'] = img_aff
