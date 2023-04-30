@@ -1,4 +1,6 @@
 preprocessing/__pycache__/*
 jp_notebooks/.ipynb_checkpoints/*
+general_utils/__pycache__/*
+configs/__pycache__/*
 personal_notes.txt
 
