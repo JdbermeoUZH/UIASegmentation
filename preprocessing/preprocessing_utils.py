@@ -7,6 +7,7 @@ This script contains helper functions that are used in all stages of the preproc
 import os
 import itk
 import sys
+import cc3d
 import h5py
 import nrrd
 import time
@@ -329,7 +330,7 @@ def adjust_shapes(nii_img, new_voxel_size, new_dimensions=None):
                                                  out_shape = new_dimensions, 
                                                  order = 0, cval=0, orientation='LPS')
     else:
-        new_dimensions = [old_dims[i] * old_voxel_size[i]/new_voxel_size[i] for i in range(len(new_voxel_size))]
+        new_dimensions = [int(old_dims[i] * old_voxel_size[i]/new_voxel_size[i]) for i in range(len(new_voxel_size))]
         new_nii_img = nibabel.processing.conform(nii_img,
                                                  voxel_size = new_voxel_size, 
                                                  out_shape = new_dimensions, 
@@ -338,28 +339,41 @@ def adjust_shapes(nii_img, new_voxel_size, new_dimensions=None):
 
 def save_for_deep_learning(name, img_path, seg_path, mask_path, f_dir, apply_resc, new_vox_size, new_dims=None, lock= None, multipreproc = None):
     
-    assert img_path != '' and seg_path != '' and mask_path != '', 'Saving for deep learning some paths are empty'
+    assert img_path != '' and seg_path != '' and mask_path != '', 'Saving for deep learning: Some paths are empty... Exiting'
 
     img_data, img_aff, img_header = read_all_from_nii(img_path)
     if apply_resc:
-        img_data, img_aff, img_header = adjust_shapes(nib.load(img_path), new_vox_size, new_dims) 
+        img_data, img_aff, img_header = adjust_shapes(nib.Nifti1Image(img_data, img_aff, img_header), 
+                                                      new_vox_size, 
+                                                      new_dims) 
     new_img_path = os.path.join(f_dir, name + '_tof.h5')
     save_hdf5_img(img_data, img_aff, img_header, new_img_path)
     del img_data, img_aff, img_header
 
     seg_data, seg_aff, seg_header = read_all_from_nii(seg_path)
     if apply_resc:
-        seg_data, seg_aff, seg_header = adjust_shapes(nib.load(seg_path), new_vox_size, new_dims) 
+        seg_data, seg_aff, seg_header = adjust_shapes(nib.Nifti1Image(seg_data, seg_aff, seg_header), 
+                                                      new_vox_size, 
+                                                      new_dims) 
     new_seg_path = os.path.join(f_dir, name + '_seg.h5')
     save_hdf5_img(seg_data, seg_aff, seg_header, new_seg_path)
     del seg_data, seg_aff, seg_header
 
     msk_data, msk_aff, msk_header = read_all_from_nii(mask_path)
+    # binarizy msk_data 
+    msk_bin = np.where(msk_data > 0, 1, 0)
+    # apply connected components
+    connectivity = 26 # only 4,8 (2D) and 26, 18, and 6 (3D) are allowed
+    msk_con      = cc3d.connected_components(msk_bin, connectivity = connectivity)
+    # assert that the msk_con doesn't lose any part
+    assert (msk_bin  == np.where(msk_con > 0, 1, 0)).all() and msk_con.shape == msk_bin.shape, f'Connected Component Mask doesnt align with binarizy Mask for {name}...Exiting'
     if apply_resc:
-        msk_data, msk_aff, msk_header = adjust_shapes(nib.load(mask_path), new_vox_size, new_dims) 
+        msk_data, msk_aff, msk_header = adjust_shapes(nib.Nifti1Image(msk_con, msk_aff, msk_header), 
+                                                      new_vox_size, 
+                                                      new_dims) 
     new_mask_path = os.path.join(f_dir, name + '_mask.h5')
     save_hdf5_img(msk_data, msk_aff, msk_header, new_mask_path)
-    del msk_data, msk_aff, msk_header
+    del msk_data, msk_con, msk_bin, msk_aff, msk_header
 
 def rescale_intensity(volume, percentils=[0.5, 99.5], bins_num=256):
     obj_volume = volume[np.where(volume > 0)]
@@ -481,11 +495,9 @@ def global_thresholding(img, threshold = 0):
     return mask
 
 def extended_closing(data, iterations, structure):
-    (x_s, y_s, z_s) = data.shape
-    data_new = np.zeros((x_s + 2*iterations, y_s + 2*iterations, z_s + 2*iterations))
-    data_new[iterations:-iterations,iterations:-iterations,iterations:-iterations] = data
+    data_new = np.pad(data, pad_width=iterations, mode = 'constant')
     data_new = scipy.ndimage.binary_closing(data_new, structure, iterations=iterations)
-    data = data_new[iterations:-iterations,iterations:-iterations,iterations:-iterations]
+    data     = data_new[iterations:-iterations,iterations:-iterations,iterations:-iterations]
     return data
 
 def global_thresholding2(img, threshold_percentile):
@@ -571,17 +583,17 @@ def n4_bias_correction(img_path, name, save_logs, path_to_save_logs, lock = None
     
     img   = sitk.ReadImage(img_path, sitk.sitkFloat64)
     start = time.time()
-    img_res, log_bias2 = N4bias_correction_filter(img, 
+    img_res, log_bias1 = N4bias_correction_filter(img, 
                                                   image_mask_flag           = True, 
-                                                  shrinkFactor              = 2, 
-                                                  MaximumNumberOfIterations = [200, 200, 200])
+                                                  shrinkFactor              = 1, 
+                                                  MaximumNumberOfIterations = [50, 50, 50])
     end = time.time()
-    print("N4 bias correction ", name, " with shrink=2 ends in", end - start)
+    print("N4 bias correction ", name, " with shrink=1 ends in", end - start)
     if save_logs == True:
-        save_npy_img(sitk.GetArrayFromImage(log_bias2).T,
-                     os.path.join(logbias_dir, 'n4_bias_'+ name + '_2.npy'))
+        save_npy_img(sitk.GetArrayFromImage(log_bias1).T,
+                     os.path.join(logbias_dir, 'n4_bias_'+ name + '_1.npy'))
     del img
-    del log_bias2
+    del log_bias1
     '''
     start = time.time()
     img_res, log_bias2 = N4bias_correction_filter(img_res, 
@@ -613,11 +625,6 @@ def n4_bias_correction(img_path, name, save_logs, path_to_save_logs, lock = None
 
 def n4_bias_correction_interface(name, img_path, seg_path, mask_path, n4_dir, save_logs, path_logs, lock, multipreproc):
 
-    seg_nii      = nib.load(seg_path)
-    new_seg_path = os.path.join(n4_dir, name + '_seg.nii.gz')
-    save_nii_img(seg_nii, new_seg_path)
-    del seg_nii
-
     if mask_path != '':
         mask_data = n4_bias_correction(mask_path, name, save_logs, path_logs, lock, multipreproc)
     else:
@@ -626,11 +633,16 @@ def n4_bias_correction_interface(name, img_path, seg_path, mask_path, n4_dir, sa
     img_nii      = nib.load(img_path)
     new_img_path = os.path.join(n4_dir, name + '_tof.nii.gz')
     save_nii_img(img_nii, new_img_path)
-    
 
     new_mask_path = os.path.join(n4_dir, name + '_mask.nii.gz')
     save_nii_img(nib.Nifti1Image(mask_data, img_nii.affine.copy(), img_nii.header.copy()), 
                  new_mask_path)
+    del img_nii
+
+    seg_nii      = nib.load(seg_path)
+    new_seg_path = os.path.join(n4_dir, name + '_seg.nii.gz')
+    save_nii_img(seg_nii, new_seg_path)
+    del seg_nii
     
     return new_img_path, new_seg_path, new_mask_path
 

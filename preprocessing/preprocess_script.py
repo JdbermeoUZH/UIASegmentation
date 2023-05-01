@@ -21,7 +21,7 @@ import preprocessing_utils as pu
 #---------- paths & hyperparameters
 # hardcode them for now. Later maybe replace them.
 multi_proc                = False
-n_threads                 = 4
+n_threads                 = 22
 remove_lower_slices       = False
 number_of_slices          = 10
 apply_n4_bias             = False
@@ -241,7 +241,7 @@ if __name__ == '__main__':
                             path_to_temp_preproc,
                             path_to_save_process_data
                             )
-            if idx > 4: break
+            if idx > 10: break
     else:
         # use a Manager object to create a shared 'Lock' object
         manager    = multiprocessing.Manager()
