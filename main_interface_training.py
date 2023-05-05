@@ -19,17 +19,7 @@ def train(config):
                                        config.test_data_name)
     
     train_dataloader, val_dataloader, test_dataloader = dataloaders.get_dataloaders_all(config, split_dict)
-    
-    # test dataloader
-    #for batch_ndx, sample in enumerate(train_dataloader):
-    #    print(batch_ndx)
-    #    print(sample[0], sample[1].is_pinned(), sample[2].is_pinned(), sample[3].is_pinned())
 
-    source_iter = iter(train_dataloader)
-    names, images, masks, segmentations = next(source_iter)
-    #print(images.shape)
-    #names, images, masks, segmentations = next(source_iter)
-    
     return None
 
 # entry point
@@ -40,4 +30,3 @@ if __name__ == '__main__':
     config      = MYParser.MyParser(config_file)
 
     logs        = train(config.config_namespace)
-    print("Training ends !!!") 

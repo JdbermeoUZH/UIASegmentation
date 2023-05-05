@@ -1,32 +1,9 @@
 import os
 import h5py
+import torch
 import numpy as np
+from general_utils import utils
 from torch.utils.data import Dataset
-
-
-#---------- helper functions
-def min_max_normalization(volume, percent_min, percent_max):
-    
-    obj_volume = volume[np.where(volume > 0)]
-    
-    min_value  = np.percentile(obj_volume, percent_min)
-    max_value  = np.percentile(obj_volume, percent_max)
-    
-    obj_volume = (obj_volume - min_value) / (max_value - min_value).astype(np.float32)
-    obj_volume[np.where(obj_volume > 1)] = 1
-    obj_volume[np.where(obj_volume < 0)] = 0
-
-    volume = volume.astype(obj_volume.dtype)
-    volume[np.where(volume > 0)] = obj_volume
-
-    return volume
-
-
-def standardization(volume):
-    mean   = np.mean(volume)
-    var    = np.var(volume)
-    volume = (volume - mean)/var
-    return volume
 
 
 #---------- datasets
@@ -53,32 +30,37 @@ class UIAGraph_Dataset(Dataset):
         if config == None:
             print('Configuration is not given... Exiting from Dataset init')
             raise FileNotFoundError
+        
         self.experiment        = config.experiment_type
         self.normalization     = config.normalization
         self.norm_percent_max  = config.max_normalization_percent
         self.norm_percent_min  = config.min_normalization_percent
+        self.patch_size        = config.graph_patch_size
+        self.connectivity      = config.graph_connectivity
 
     def __len__(self):
         length = len(self.data)
         return length
     
     def __getitem__(self, idx):
+        
         current_item = self.data[idx]
         current_name = current_item['name']
+        
         # image has the intensities of the init tof image. Maybe without the skull => float32
         with h5py.File(current_item['imag'], 'r') as f: current_imag = f['data'][()]
-        # mask is supposed to be number of components => uint16
+        # mask contains the components => uint16
         with h5py.File(current_item['mask'], 'r') as f: current_mask = f['data'][()]
         # segm is supposed to be with values in range 0-21 => uint8
         with h5py.File(current_item['segm'], 'r') as f: current_segm = f['data'][()]
 
         # normalize the init image
         if self.normalization == 'min_max':
-            current_imag = min_max_normalization(current_imag, 
-                                                 self.norm_percent_min,
-                                                 self.norm_percent_max)
+            current_imag = utils.min_max_normalization(current_imag, 
+                                                       self.norm_percent_min,
+                                                       self.norm_percent_max)
         elif self.normalization == 'standardization':
-            current_imag = standardization(current_imag)
+            current_imag = utils.standardization(current_imag)
         
         current_imag = current_imag.astype(np.float32)
         current_mask = current_mask.astype(np.int16)
@@ -90,5 +72,14 @@ class UIAGraph_Dataset(Dataset):
         if self.transform != None:  new_item = self.transform(new_item)
 
         # compute graph's adjacency matrix and node features
+        adj_mtx    = utils.get_adjacency_matrix(new_item['mask'], 
+                                                self.patch_size, 
+                                                self.connectivity)
         
-        return new_item['name'], new_item['imag'], new_item['mask'], new_item['segm']
+        node_feats = utils.get_nodes_features(new_item['imag'], 
+                                              self.patch_size)
+        
+        # create similarly the mask for the segmentation
+
+        # for now return everything for testing
+        return new_item['name'], node_feats, adj_mtx, new_item['imag'], new_item['mask'], new_item['segm']

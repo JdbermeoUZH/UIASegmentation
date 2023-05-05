@@ -9,9 +9,6 @@ import time
 import torch
 
 
-#---------- debugging
-debug_mode = True
-
 #---------- names
 # The .json file contains a dict with keys in format *_data. 
 # Each key corresponds to training, validation and test set
@@ -45,13 +42,17 @@ shuffle_test       = False
 device             = torch.device('cpu')
 num_workers        = 1
 
+
 #---------- Hyperparameters 
-batch_size      = 1
-batch_size_val  = 1
-batch_size_test = 1
+batch_size         = 1
+batch_size_val     = 1
+batch_size_test    = 1
+graph_patch_size   = [32,32,16]
+graph_connectivity = 26 # available options 6 (only faces), 18(faces & edges), 26(faces, edges & corners)
 
 #---------- data processing
-normalization             = 'min_max' # choose between 'min_max' or 'standardization'
-max_normalization_percent = 99.8
-min_normalization_percent = 0.5
-transforms_probability    = 0.5
+normalization                = 'min_max' # choose between 'min_max' or 'standardization'
+max_normalization_percent    = 99.8
+min_normalization_percent    = 0.5
+transforms_probability       = 0.5
+transforms_probability_valid = 0 

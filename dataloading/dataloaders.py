@@ -45,12 +45,15 @@ def get_dataloader_single(type_of_loader,
     if type_of_loader == 'train':
         transform = get_transform_train(config)
         dataset   = datasets.UIAGraph_Dataset(path_data, data, transform, config)
+    
     elif type_of_loader == 'validation':
         transform = get_transform_valid(config)
         dataset   = datasets.UIAGraph_Dataset(path_data, data, transform, config)
+    
     elif type_of_loader == 'test':
         transform = get_transform_test(config)
         dataset   = datasets.UIAGraph_Dataset(path_data, data, transform, config)
+        
     else:
         print("Error: Wrong type of loader in get_loaders_single")
         raise NameError
@@ -68,25 +71,38 @@ def get_dataloader_single(type_of_loader,
 
 #---------- helper functions
 def get_transform_train(config):
-    transform_label = get_label_transform(config.experiment_type)
-    transforms_train = ComposeTransforms([ToTensor(config.device),
+    transform_label  = get_label_transform(config.experiment_type)
+    '''
+    transforms_train = ComposeTransforms([ToTensor(),
                                           RandomFlip(config.transforms_probability),
                                           RandomRotate_90_180_270(config.transforms_probability),
                                           RandomAffine(config.transforms_probability),
                                           transform_label])
+    '''
+    transforms_train = ComposeTransforms([ToTensor(), transform_label])
     return transforms_train
 
 def get_transform_valid(config):
-    return None
+    transform_label  = get_label_transform(config.experiment_type)
+    transforms_valid = ComposeTransforms([ToTensor(),
+                                          transform_label])
+    return transforms_valid
 
 def get_transform_test(config):
-    return None
+    transform_label  = get_label_transform(config.experiment_type)
+    transforms_test  = ComposeTransforms([ToTensor(),
+                                          transform_label])
+    return transforms_test
 
 def get_label_transform(experiment_type):
     if experiment_type != 'binary_class' and experiment_type != 'three_class' and experiment_type != 'multi_class':
         print("Transformation of labels: Unknown experiment type")
         return None
-    return None
+    if experiment_type == 'binary_class':
+        transforms = ComposeTransforms([BinarizeSegmentation()])
+        return transforms
+    else:
+        return None
 
 
 #---------- Transformations
@@ -98,13 +114,13 @@ class ComposeTransforms():
         for t in self.transforms:
             if t != None:
                 try:
-                    t(item)
+                    item = t(item)
                 except Exception as e:
                     raise Exception(f'Transformation Error: in {str(t)} with error {str(e)}')
         return item
     
 class ToTensor():
-    def __init__(self, device):
+    def __init__(self, device="cpu"):
         self.device = device
 
     def __call__(self, item):
@@ -130,7 +146,7 @@ class ToTensor():
         return item
         
 class RandomFlip():
-    def __init__(self, prob):
+    def __init__(self, prob = 0.5):
         self.prob = prob
 
     def __call__(self, item):
@@ -159,7 +175,7 @@ class RandomFlip():
         return item
 
 class RandomRotate_90_180_270():
-    def __init__(self, prob):
+    def __init__(self, prob = 0.5):
         self.prob   = prob
         self.angles = [1,2,3] 
     
@@ -196,7 +212,7 @@ class RandomAffine():
     Adopted from 
     https://torchio.readthedocs.io/transforms/augmentation.html#randomaffine
     '''
-    def __init__(self, prob):
+    def __init__(self, prob = 0.5):
         self.prob        = prob
         self.scales      = (0.9, 1.2)
         self.degrees     = 15
@@ -208,12 +224,36 @@ class RandomAffine():
         mask         = item['mask']
         segm         = item['segm']
 
-        if random_prob < self.prob:
-            imag, mask, segm = self.rand_affine((imag, mask, segm))
+        assert imag.ndim == mask.ndim == segm.ndim, "Inside Random Affine: dimensions mismatch"
+
+        if random_prob > self.prob:
+            if imag.ndim == 3:
+                imag = imag.unsqueeze(0)
+                mask = mask.unsqueeze(0)
+                segm = segm.unsqueeze(0)
+            
+            subject = tio.Subject(image1 = tio.ScalarImage(tensor = imag),
+                                  image2 = tio.ScalarImage(tensor = mask),
+                                  image3 = tio.ScalarImage(tensor = segm))
+            subject = self.rand_affine(subject)
+            imag = subject['image1'].data.squeeze(0)
+            mask = subject['image2'].data.squeeze(0)
+            segm = subject['image3'].data.squeeze(0)
         
         item['imag'] = imag
         item['mask'] = mask
         item['segm'] = segm
 
         return item
-        
+
+
+#---------- Label Transformations
+class BinarizeSegmentation():
+    def __init__(self):
+        pass
+    
+    def __call__(self, item):
+        segm         = item['segm']
+        segm         = torch.where(segm > 0, 1, 0)
+        item['segm'] = segm
+        return item
