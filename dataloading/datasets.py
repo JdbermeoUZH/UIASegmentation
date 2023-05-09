@@ -1,4 +1,5 @@
 import os
+import cc3d
 import h5py
 import torch
 import numpy as np
@@ -68,18 +69,34 @@ class UIAGraph_Dataset(Dataset):
 
         assert current_imag.ndim == current_segm.ndim == current_mask.ndim, f'In the Dataset class mismatch in dimensions of images {current_name}'
         
-        new_item = {'name': current_name, 'imag': current_imag, 'mask': current_mask, 'segm': current_segm}
-        if self.transform != None:  new_item = self.transform(new_item)
-
-        # compute graph's adjacency matrix and node features
+        new_item = {'name': current_name, 
+                    'imag': current_imag, 
+                    'mask': current_mask, 
+                    'segm': current_segm}
+        
+        if self.transform != None:  
+            new_item = self.transform(new_item)
+        
+        # compute graph's adjacency matrix and node features based on coarse mask
         adj_mtx    = utils.get_adjacency_matrix(new_item['mask'], 
                                                 self.patch_size, 
                                                 self.connectivity)
-        
         node_feats = utils.get_nodes_features(new_item['imag'], 
                                               self.patch_size)
         
-        # create similarly the mask for the segmentation
+        # compute graph's adjacency matrix and node features based on groundtruth mask
+        segm_np = new_item['segm'].numpy()
+        if self.experiment != 'binary_class':
+            segm_np = np.where(segm_np > 0, 1, 0)
+        segm_np        = cc3d.connected_components(segm_np, 
+                                                   connectivity = self.connectivity)
+        segm_con_tensor = torch.from_numpy(segm_np.astype('int16'))
 
-        # for now return everything for testing
-        return new_item['name'], node_feats, adj_mtx, new_item['imag'], new_item['mask'], new_item['segm']
+        adj_mtx_gt    = utils.get_adjacency_matrix(segm_con_tensor,
+                                                   self.patch_size,
+                                                   self.connectivity)
+        del segm_con_tensor, segm_np
+        node_feats_gt = utils.get_nodes_features(new_item['segm'],
+                                                 self.patch_size)
+        
+        return new_item['name'], adj_mtx, node_feats, adj_mtx_gt, node_feats_gt

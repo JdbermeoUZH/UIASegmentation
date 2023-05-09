@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import torchio as tio
+import torch.nn.functional as F
 from dataloading import datasets
 from torch.utils.data import DataLoader
 
@@ -79,7 +80,8 @@ def get_transform_train(config):
                                           RandomAffine(config.transforms_probability),
                                           transform_label])
     '''
-    transforms_train = ComposeTransforms([ToTensor(), transform_label])
+    transforms_train = ComposeTransforms([ToTensor(),
+                                          transform_label])
     return transforms_train
 
 def get_transform_valid(config):
@@ -95,9 +97,6 @@ def get_transform_test(config):
     return transforms_test
 
 def get_label_transform(experiment_type):
-    if experiment_type != 'binary_class' and experiment_type != 'three_class' and experiment_type != 'multi_class':
-        print("Transformation of labels: Unknown experiment type")
-        return None
     if experiment_type == 'binary_class':
         transforms = ComposeTransforms([BinarizeSegmentation()])
         return transforms
@@ -144,7 +143,50 @@ class ToTensor():
         item['mask'] = mask
         item['segm'] = segm
         return item
+
+class Padding():
+    def __init__(self, kernel):
+        if len(kernel) ==3:
+            self.div_xaxis = kernel[0]
+            self.div_yaxis = kernel[1]
+            self.div_zaxis = kernel[2]
+        elif len(kernel) == 1:
+            self.div_xaxis = kernel[0]
+            self.div_yaxis = kernel[0]
+            self.div_zaxis = kernel[0]
+        else:
+            print(f'Inside the Padding method, the variable {kernel} is not well defined')
+            raise TypeError
+    
+    def __call__(self, item):
+        imag = item['imag']
+        mask = item['mask']
+        segm = item['segm']
         
+        assert imag.shape == mask.shape == segm.shape, "Inside Pad the dimensions don't fit"
+
+        padx_left = 0 if imag.shape[0] % self.div_xaxis == 0 else (imag.shape[0] // self.div_xaxis + 1) * self.div_xaxis - imag.shape[0]
+        pady_left = 0 if imag.shape[1] % self.div_yaxis == 0 else (imag.shape[1] // self.div_yaxis + 1) * self.div_yaxis - imag.shape[1]
+        padz_left = 0 if imag.shape[2] % self.div_zaxis == 0 else (imag.shape[2] // self.div_zaxis + 1) * self.div_zaxis - imag.shape[2]
+
+        padx_right = padx_left//2 if padx_left%2 == 0 else padx_left//2+1
+        pady_right = pady_left//2 if pady_left%2 == 0 else pady_left//2+1
+        padz_right = padz_left//2 if padz_left%2 == 0 else padz_left//2+1
+
+        padx_left = padx_left//2
+        pady_left = pady_left//2
+        padz_left = padz_left//2
+
+        imag = F.pad(imag, pad = (padz_left, padz_right, pady_left, pady_right, padx_left, padx_right))
+        mask = F.pad(mask, pad = (padz_left, padz_right, pady_left, pady_right, padx_left, padx_right))
+        segm = F.pad(segm, pad = (padz_left, padz_right, pady_left, pady_right, padx_left, padx_right))
+
+        item['imag'] = imag
+        item['mask'] = mask
+        item['segm'] = segm
+        
+        return item
+    
 class RandomFlip():
     def __init__(self, prob = 0.5):
         self.prob = prob

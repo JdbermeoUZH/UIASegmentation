@@ -29,115 +29,128 @@ def standardization(volume):
 
 
 #---------- helper functions for graph creation
-def get_nodes_features(volume, patch_size):
-    stride = patch_size # no overlaps
+def get_patches(volume, patch_size):
+    stride  = patch_size # no overlaps
     patches = volume.unfold(0, patch_size[0], stride[0])\
                     .unfold(1, patch_size[1], stride[1])\
                     .unfold(2, patch_size[2], stride[2])
-    return patches.contiguous()
+    patches = patches.contiguous()
+    return patches
 
-def find_node_id(x,y,z, patch_size):
-    node_id = z * (patch_size[0] * patch_size[1]) + x * patch_size[1] + y
+def get_nodes_features(volume, patch_size):
+    patches = get_patches(volume, patch_size)
+    # for ease traverse first x-axis then y-axis and then z-axis
+    # id of a node is x + y*n_x + z*(n_x*n_y)
+    return patches.permute(2,1,0,3,4,5)\
+                  .reshape(-1,patch_size[0],patch_size[1],patch_size[2]) 
+
+def find_node_id(x,y,z, patches_size):
+    node_id = x + y*patches_size[0] + z*(patches_size[0]*patches_size[1])
     return node_id
 
-def check_face(adj_mtx, x, y, z, neigh_x, neigh_y, neigh_z, face_target, face_neigh, patch_size):
-    common_values = face_target[torch.where(face_target == face_neigh)]
-    if torch.any(common_values): #doesn't count 0 which is the background
-        neigh_node_id = find_node_id(neigh_x, neigh_y, neigh_z, patch_size)
-        first_index   = torch.where(adj_mtx[x,y,z,:] == 0)[0][0]
-        adj_mtx[x,y,z,first_index] = neigh_node_id
+def check_face(adj_mtx, x, y, z, neigh_x, neigh_y, neigh_z, face_target, face_neigh, patches_size):
+    node_id_target = find_node_id(x, y, z, patches_size) 
+    node_id_neigh  = find_node_id(neigh_x, neigh_y, neigh_z, patches_size)
+    if adj_mtx[node_id_target, node_id_neigh] == 0: 
+        common_values = face_target[torch.where(face_target == face_neigh)]
+        if torch.any(common_values): #doesn't count 0 which is the background
+            adj_mtx[node_id_target, node_id_neigh] = 1
+            adj_mtx[node_id_neigh, node_id_target] = 1
 
-def check_edge(adj_mtx, x, y, z, neigh_x, neigh_y, neigh_z, edge_target, edge_neigh, patch_size):
-    common_values = edge_target[torch.where(edge_target == edge_neigh)]
-    if torch.any(common_values):
-        neigh_node_id = find_node_id(neigh_x, neigh_y, neigh_z, patch_size)
-        first_index   = torch.where(adj_mtx[x,y,z,:] == 0)[0][0]
-        adj_mtx[x,y,z,first_index] == neigh_node_id
+def check_edge(adj_mtx, x, y, z, neigh_x, neigh_y, neigh_z, edge_target, edge_neigh, patches_size):
+    node_id_target = find_node_id(x, y, z, patches_size) 
+    node_id_neigh  = find_node_id(neigh_x, neigh_y, neigh_z, patches_size)
+    if adj_mtx[node_id_target, node_id_neigh] == 0:
+        common_values = edge_target[torch.where(edge_target == edge_neigh)]
+        if torch.any(common_values):
+            adj_mtx[node_id_target, node_id_neigh] = 1
+            adj_mtx[node_id_neigh, node_id_target] = 1
 
-def check_corner(adj_mtx, x, y, z, neigh_x, neigh_y, neigh_z, corner_target, corner_neigh, patch_size):
+def check_corner(adj_mtx, x, y, z, neigh_x, neigh_y, neigh_z, corner_target, corner_neigh, patches_size):
+    node_id_target = find_node_id(x, y, z, patches_size)
+    node_id_neigh  = find_node_id(neigh_x, neigh_y,neigh_z, patches_size)
+    if adj_mtx[node_id_target, node_id_neigh] == 0:
+        if corner_target == corner_neigh and corner_target != 0:
+            adj_mtx[node_id_target, node_id_neigh] = 1
+            adj_mtx[node_id_neigh, node_id_target] = 1
 
-    if corner_target == corner_neigh and corner_target != 0:
-        neigh_node_id = find_node_id(neigh_x, neigh_y, neigh_z, patch_size)
-        first_index   = torch.where(adj_mtx[x,y,z,:] == 0)[0][0]
-        adj_mtx[x,y,z,first_index] == neigh_node_id
-
-def find_adjacent_nodes6(adj_mtx, m_patches, x, y, z, patch_size):
-    
+def find_adjacent_nodes6(adj_mtx, m_patches, x, y, z):
+    size =  list(m_patches.shape)
     for z_neigh in range(max(0, z-1), 1+min(m_patches.shape[2]-1, z+1)):
-        for x_neigh in range(max(0, x-1), 1+min(m_patches.shape[0]-1, x+1)):
-            for y_neigh in range(max(0, y-1), 1+min(m_patches.shape[1]-1, y+1)):
+        for y_neigh in range(max(0, y-1), 1+min(m_patches.shape[1]-1, y+1)):
+            for x_neigh in range(max(0, x-1), 1+min(m_patches.shape[0]-1, x+1)):
                 if z_neigh == z and y_neigh == y and x_neigh == x: 
                     continue
                 if x_neigh == x and y_neigh == y:
                     if z_neigh > z:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,-1], m_patches[x_neigh, y_neigh, z_neigh,:,:,0], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,-1], m_patches[x_neigh, y_neigh, z_neigh,:,:,0], size)
                     elif z_neigh < z:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,0], m_patches[x_neigh, y_neigh, z_neigh,:,:,-1], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,0], m_patches[x_neigh, y_neigh, z_neigh,:,:,-1], size)
                 elif x_neigh == x and z_neigh == z:
                     if y_neigh > y:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,:], m_patches[x_neigh, y_neigh, z_neigh,:,0,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,:], m_patches[x_neigh, y_neigh, z_neigh,:,0,:], size)
                     elif y_neigh < y:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,:], m_patches[x_neigh, y_neigh, z_neigh,:,-1,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,:], m_patches[x_neigh, y_neigh, z_neigh,:,-1,:], size)
                 elif y_neigh == y and z_neigh == z:
                     if x_neigh > x:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,:], m_patches[x_neigh, y_neigh, z_neigh,0,:,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,:], m_patches[x_neigh, y_neigh, z_neigh,0,:,:], size)
                     else:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,:], m_patches[x_neigh, y_neigh, z_neigh,-1,:,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,:], m_patches[x_neigh, y_neigh, z_neigh,-1,:,:], size)
 
-def find_adjacent_nodes18(adj_mtx, m_patches, x, y, z, patch_size):
-    
+def find_adjacent_nodes18(adj_mtx, m_patches, x, y, z):
+    size =  list(m_patches.shape)
     for z_neigh in range(max(0, z-1), 1+min(m_patches.shape[2]-1, z+1)):
-        for x_neigh in range(max(0, x-1), 1+min(m_patches.shape[0]-1, x+1)):
-            for y_neigh in range(max(0, y-1), 1+min(m_patches.shape[1]-1, y+1)):
-            
+        for y_neigh in range(max(0, y-1), 1+min(m_patches.shape[1]-1, y+1)):
+            for x_neigh in range(max(0, x-1), 1+min(m_patches.shape[0]-1, x+1)):         
                 if z_neigh == z and y_neigh == y and x_neigh == x: 
                     continue
                 # check faces
                 if x_neigh == x and y_neigh == y:
                     if z_neigh > z:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,-1], m_patches[x_neigh, y_neigh, z_neigh,:,:,0], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,-1], m_patches[x_neigh, y_neigh, z_neigh,:,:,0], size)
                     elif z_neigh < z:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,0], m_patches[x_neigh, y_neigh, z_neigh,:,:,-1], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,0], m_patches[x_neigh, y_neigh, z_neigh,:,:,-1], size)
                 elif x_neigh == x and z_neigh == z:
                     if y_neigh > y:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,:], m_patches[x_neigh, y_neigh, z_neigh,:,0,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,:], m_patches[x_neigh, y_neigh, z_neigh,:,0,:], size)
                     elif y_neigh < y:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,:], m_patches[x_neigh, y_neigh, z_neigh,:,-1,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,:], m_patches[x_neigh, y_neigh, z_neigh,:,-1,:], size)
                 elif y_neigh == y and z_neigh == z:
                     if x_neigh > x:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,:], m_patches[x_neigh, y_neigh, z_neigh,0,:,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,:], m_patches[x_neigh, y_neigh, z_neigh,0,:,:], size)
                     else:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,:], m_patches[x_neigh, y_neigh, z_neigh,-1,:,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,:], m_patches[x_neigh, y_neigh, z_neigh,-1,:,:], size)
                 #check edges
                 elif x_neigh == x:
                     if   z_neigh > z and y_neigh > y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,-1], m_patches[x_neigh, y_neigh, z_neigh,:,0,0], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,-1], m_patches[x_neigh, y_neigh, z_neigh,:,0,0], size)
                     elif z_neigh > z and y_neigh < y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,-1], m_patches[x_neigh, y_neigh, z_neigh,:,-1,0], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,-1], m_patches[x_neigh, y_neigh, z_neigh,:,-1,0], size)
                     elif z_neigh < z and y_neigh > y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,0], m_patches[x_neigh, y_neigh, z_neigh,:,0,-1], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,0], m_patches[x_neigh, y_neigh, z_neigh,:,0,-1], size)
                     elif z_neigh < z and y_neigh < y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,0], m_patches[x_neigh, y_neigh, z_neigh,:,-1,-1], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,0], m_patches[x_neigh, y_neigh, z_neigh,:,-1,-1], size)
                 elif y_neigh == y:
                     if   z_neigh > z and x_neigh > x:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,-1], m_patches[x_neigh, y_neigh, z_neigh,0,:,0], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,-1], m_patches[x_neigh, y_neigh, z_neigh,0,:,0], size)
                     elif z_neigh > z and x_neigh < x:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,-1], m_patches[x_neigh, y_neigh, z_neigh,-1,:,0], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,-1], m_patches[x_neigh, y_neigh, z_neigh,-1,:,0], size)
                     elif z_neigh < z and x_neigh > x:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,0], m_patches[x_neigh, y_neigh, z_neigh,0,:,-1], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,0], m_patches[x_neigh, y_neigh, z_neigh,0,:,-1], size)
                     elif z_neigh < z and x_neigh < x:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,0], m_patches[x_neigh, y_neigh, z_neigh,-1,:,-1], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,0], m_patches[x_neigh, y_neigh, z_neigh,-1,:,-1], size)
                 elif z_neigh == z:
                     if   x_neigh > x and y_neigh > y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,-1,:], m_patches[x_neigh, y_neigh, z_neigh,0,0,:], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,-1,:], m_patches[x_neigh, y_neigh, z_neigh,0,0,:], size)
                     elif x_neigh > x and y_neigh < y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,0,:], m_patches[x_neigh, y_neigh, z_neigh,0,-1,:], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,0,:], m_patches[x_neigh, y_neigh, z_neigh,0,-1,:], size)
                     elif x_neigh < x and y_neigh > y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,-1,:], m_patches[x_neigh, y_neigh, z_neigh,-1,0,:], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,-1,:], m_patches[x_neigh, y_neigh, z_neigh,-1,0,:], size)
                     elif x_neigh < x and y_neigh < y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,0,:], m_patches[x_neigh, y_neigh, z_neigh,-1,-1,:], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,0,:], m_patches[x_neigh, y_neigh, z_neigh,-1,-1,:], size)
 
-def find_adjacent_nodes26(adj_mtx, m_patches, x, y, z, patch_size):
+def find_adjacent_nodes26(adj_mtx, m_patches, x, y, z):
+    size =  list(m_patches.shape)
     for z_neigh in range(max(0, z-1), 1+min(m_patches.shape[2]-1, z+1)):
         for y_neigh in range(max(0, y-1), 1+min(m_patches.shape[1]-1, y+1)):
             for x_neigh in range(max(0, x-1), 1+min(m_patches.shape[0]-1, x+1)):
@@ -146,105 +159,112 @@ def find_adjacent_nodes26(adj_mtx, m_patches, x, y, z, patch_size):
                 # check faces
                 if x_neigh == x and y_neigh == y:
                     if z_neigh > z:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,-1], m_patches[x_neigh, y_neigh, z_neigh, :, :, 0], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,-1], m_patches[x_neigh, y_neigh, z_neigh, :, :, 0], size)
                     elif z_neigh < z:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,0], m_patches[x_neigh, y_neigh, z_neigh,:, :, -1], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,:,0], m_patches[x_neigh, y_neigh, z_neigh,:, :, -1], size)
                 elif x_neigh == x and z_neigh == z:
                     if y_neigh > y:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,:], m_patches[x_neigh, y_neigh, z_neigh, :,0,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,:], m_patches[x_neigh, y_neigh, z_neigh, :,0,:], size)
                     elif y_neigh < y:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,:], m_patches[x_neigh, y_neigh, z_neigh,:,-1,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,:], m_patches[x_neigh, y_neigh, z_neigh,:,-1,:], size)
                 elif y_neigh == y and z_neigh == z:
                     if x_neigh > x:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,:], m_patches[x_neigh, y_neigh, z_neigh,0,:,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,:], m_patches[x_neigh, y_neigh, z_neigh,0,:,:], size)
                     else:
-                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,:], m_patches[x_neigh, y_neigh, z_neigh,-1,:,:], patch_size)
+                        check_face(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,:], m_patches[x_neigh, y_neigh, z_neigh,-1,:,:], size)
                 #check edges
                 elif x_neigh == x:
                     if   z_neigh > z and y_neigh > y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,-1], m_patches[x_neigh, y_neigh, z_neigh,:,0,0], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,-1], m_patches[x_neigh, y_neigh, z_neigh,:,0,0], size)
                     elif z_neigh > z and y_neigh < y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,-1], m_patches[x_neigh, y_neigh, z_neigh,:,-1,0], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,-1], m_patches[x_neigh, y_neigh, z_neigh,:,-1,0], size)
                     elif z_neigh < z and y_neigh > y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,0], m_patches[x_neigh, y_neigh, z_neigh,:,0,-1], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,-1,0], m_patches[x_neigh, y_neigh, z_neigh,:,0,-1], size)
                     elif z_neigh < z and y_neigh < y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,0], m_patches[x_neigh, y_neigh, z_neigh,:,-1,-1], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,:,0,0], m_patches[x_neigh, y_neigh, z_neigh,:,-1,-1], size)
                 elif y_neigh == y:
                     if   z_neigh > z and x_neigh > x:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,-1], m_patches[x_neigh, y_neigh, z_neigh,0,:,0], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,-1], m_patches[x_neigh, y_neigh, z_neigh,0,:,0], size)
                     elif z_neigh > z and x_neigh < x:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,-1], m_patches[x_neigh, y_neigh, z_neigh,-1,:,0], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,-1], m_patches[x_neigh, y_neigh, z_neigh,-1,:,0], size)
                     elif z_neigh < z and x_neigh > x:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,0], m_patches[x_neigh, y_neigh, z_neigh,0,:,-1], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,:,0], m_patches[x_neigh, y_neigh, z_neigh,0,:,-1], size)
                     elif z_neigh < z and x_neigh < x:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,0], m_patches[x_neigh, y_neigh, z_neigh,-1,:,-1], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,:,0], m_patches[x_neigh, y_neigh, z_neigh,-1,:,-1], size)
                 elif z_neigh == z:
                     if   x_neigh > x and y_neigh > y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,-1,:], m_patches[x_neigh, y_neigh, z_neigh,0,0,:], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,-1,:], m_patches[x_neigh, y_neigh, z_neigh,0,0,:], size)
                     elif x_neigh > x and y_neigh < y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,0,:], m_patches[x_neigh, y_neigh, z_neigh,0,-1,:], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,0,:], m_patches[x_neigh, y_neigh, z_neigh,0,-1,:], size)
                     elif x_neigh < x and y_neigh > y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,-1,:], m_patches[x_neigh, y_neigh, z_neigh,-1,0,:], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,-1,:], m_patches[x_neigh, y_neigh, z_neigh,-1,0,:], size)
                     elif x_neigh < x and y_neigh < y:
-                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,0,:], m_patches[x_neigh, y_neigh, z_neigh,-1,-1,:], patch_size)
+                        check_edge(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,0,:], m_patches[x_neigh, y_neigh, z_neigh,-1,-1,:], size)
                 # check corners
                 else:
                     if z_neigh > z and y_neigh > y and x_neigh > x:
-                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,-1,-1], m_patches[x_neigh, y_neigh, z_neigh,0,0,0], patch_size)
+                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,-1,-1], m_patches[x_neigh, y_neigh, z_neigh,0,0,0], size)
                     elif z_neigh > z and y_neigh > y and x_neigh < x:
-                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,-1,-1], m_patches[x_neigh, y_neigh, z_neigh,-1,0,0], patch_size)
+                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,-1,-1], m_patches[x_neigh, y_neigh, z_neigh,-1,0,0], size)
                     elif z_neigh > z and y_neigh < y and x_neigh > x:
-                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,0,-1], m_patches[x_neigh, y_neigh, z_neigh,0,-1,0], patch_size)
+                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,0,-1], m_patches[x_neigh, y_neigh, z_neigh,0,-1,0], size)
                     elif z_neigh > z and y_neigh < y and x_neigh < x:
-                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,0,-1], m_patches[x_neigh, y_neigh, z_neigh,-1,-1,0], patch_size)
+                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,0,-1], m_patches[x_neigh, y_neigh, z_neigh,-1,-1,0], size)
                     
                     elif z_neigh < z and y_neigh > y and x_neigh > x:
-                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,-1,0], m_patches[x_neigh, y_neigh, z_neigh,0,0,-1], patch_size)
+                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,-1,0], m_patches[x_neigh, y_neigh, z_neigh,0,0,-1], size)
                     elif z_neigh < z and y_neigh > y and x_neigh < x:
-                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,-1,0], m_patches[x_neigh, y_neigh, z_neigh,-1,0,-1], patch_size)
+                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,-1,0], m_patches[x_neigh, y_neigh, z_neigh,-1,0,-1], size)
                     elif z_neigh < z and y_neigh < y and x_neigh > x:
-                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,0,0], m_patches[x_neigh, y_neigh, z_neigh,0,-1,-1], patch_size)
+                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,-1,0,0], m_patches[x_neigh, y_neigh, z_neigh,0,-1,-1], size)
                     elif z_neigh < z and y_neigh < y and x_neigh < x:
-                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,0,0], m_patches[x_neigh, y_neigh, z_neigh,-1,-1,-1], patch_size)
+                        check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,0,0], m_patches[x_neigh, y_neigh, z_neigh,-1,-1,-1], size)
                     else:
                         print("BUG: no category avail.... This shouldnt have happened")
 
 def find_adjacency_matrix6(adj_mtx, m_patches, patch_size):
     # naive implementation for connectivity 6...
+    # we traverse first in x-axis then on y-axis and then on z-axis.
+    # In accordance to node feature creation
     for z in range(0, m_patches.shape[2]):
-        for x in range(0, m_patches.shape[0]):
-            for y in range(0, m_patches.shape[1]):
-                find_adjacent_nodes6(adj_mtx, m_patches, x, y, z, patch_size)
+        for y in range(0, m_patches.shape[1]):
+            for x in range(0, m_patches.shape[0]):
+                find_adjacent_nodes6(adj_mtx, m_patches, x, y, z)
 
 def find_adjacency_matrix18(adj_mtx, m_patches, patch_size):
     # naive implementation for connectivity 18...
+    # we traverse first in x-axis then on y-axis and then on z-axis.
+    # In accordance to node feature creation
     for z in range(0, m_patches.shape[2]):
-        for x in range(0, m_patches.shape[0]):
-            for y in range(0, m_patches.shape[1]):
-                find_adjacent_nodes18(adj_mtx, m_patches, x, y, z, patch_size)
+        for y in range(0, m_patches.shape[1]):
+            for x in range(0, m_patches.shape[0]):
+                find_adjacent_nodes18(adj_mtx, m_patches, x, y, z)
 
 def find_adjacency_matrix26(adj_mtx, m_patches, patch_size):
     # naive implementation for connectivity 26...
+    # we traverse first in x-axis then on y-axis and then on z-axis.
+    # In accordance to node feature creation
     for z in range(0, m_patches.shape[2]):
-        for x in range(0, m_patches.shape[0]):
-            for y in range(0, m_patches.shape[1]):
-                find_adjacent_nodes26(adj_mtx, m_patches, x, y, z, patch_size)
+        for y in range(0, m_patches.shape[1]):
+            for x in range(0, m_patches.shape[0]):
+                find_adjacent_nodes26(adj_mtx, m_patches, x, y, z)
 
-def get_adjacency_matrix(m_volume, patch_size, connectivity):
+def get_adjacency_matrix(volume, patch_size, connectivity):
     
-    m_patches = get_nodes_features(m_volume, patch_size)
-    adj_mtx   = torch.zeros((m_patches.shape[0], m_patches.shape[1], m_patches.shape[2], connectivity))
-    
+    patches  = get_patches(volume, patch_size)
+    n_nodes  = patches.shape[0] * patches.shape[1] * patches.shape[2]
+    # later transform it to sparse format
+    adj_mtx  = torch.zeros((n_nodes, n_nodes), dtype=torch.int8)
+
     if connectivity == 6:
-        find_adjacency_matrix6(adj_mtx, m_patches, patch_size)
+        find_adjacency_matrix6(adj_mtx, patches, patch_size)
     elif connectivity == 18: 
-        find_adjacency_matrix18(adj_mtx, m_patches, patch_size)
+        find_adjacency_matrix18(adj_mtx, patches, patch_size)
     elif connectivity == 26:
-        find_adjacency_matrix26(adj_mtx, m_patches, patch_size)
+        find_adjacency_matrix26(adj_mtx, patches, patch_size)
     else:
         print(f'Inside Dataset class: Connectivity {connectivity} incorrect... Exiting')
         raise ValueError
-    
     return adj_mtx
 
 
