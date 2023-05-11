@@ -98,5 +98,6 @@ class UIAGraph_Dataset(Dataset):
         del segm_con_tensor, segm_np
         node_feats_gt = utils.get_nodes_features(new_item['segm'],
                                                  self.patch_size)
-        
+        node_feats    = node_feats.unsqueeze(1)
+        node_feats_gt = node_feats_gt.unsqueeze(1)
         return new_item['name'], adj_mtx, node_feats, adj_mtx_gt, node_feats_gt
