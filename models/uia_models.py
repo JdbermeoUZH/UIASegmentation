@@ -1,7 +1,11 @@
 import torch
 import torch.nn as nn
+from torch import Tensor
 from models import model_utils as mu
-
+from torch_geometric.nn import GCNConv, TopKPooling
+from torch_geometric.typing import OptTensor, PairTensor
+from torch_geometric.nn.resolver import activation_resolver
+from torch_geometric.utils import add_self_loops, remove_self_loops, to_torch_csr_tensor
 
 def act_layer(activation_func, inplace=True, neg_slope =0.2, nprelu=1):
     activation_func = activation_func.lower()
@@ -11,33 +15,43 @@ def act_layer(activation_func, inplace=True, neg_slope =0.2, nprelu=1):
         layer = nn.LeakyReLU(neg_slope, inplace)
     elif activation_func == 'prelu':
         layer = nn.PReLU(num_parameters=nprelu, init=neg_slope)
+    elif activation_func == 'sigmoid':
+        layer = nn.Sigmoid()
+    elif activation_func == 'softmax':
+        # to be implemented
+        return None
     else:
         raise NotImplementedError(f'activation layer {activation_func} is not implemented')
     return layer
 
 class DoubleConv(nn.Module):
-    def __init__(self, in_channels, out_channels, activation_func='relu', mid_channels = None):
+    def __init__(self, in_channels, out_channels, activation_func1='relu', activation_func2 = '', mid_channels = None):
         super().__init__()
+        
         if mid_channels == None:    mid_channels = out_channels
-        self.activation  = act_layer(activation_func)
+        
+        self.activation1  = act_layer(activation_func1)  
+        if activation_func2 == '': self.activation2 = act_layer(activation_func1)
+        else: self.activation2 = act_layer(activation_func2)
+        
         self.double_conv = nn.Sequential(
             nn.Conv3d(in_channels, mid_channels, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm3d(mid_channels),
-            self.activation,
+            self.activation1,
             nn.Conv3d(mid_channels, out_channels, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm3d(out_channels),
-            self.activation
+            self.activation2
         )
 
     def forward(self, x):
         return self.double_conv(x)
 
 class Down(nn.Module):
-    def __init__(self, in_channels, out_channels, activation_func='relu', mid_channels = None):
+    def __init__(self, in_channels, out_channels, activation_func1='relu', activation_func2='', mid_channels = None):
         super().__init__()
         self.maxpool_dconv = nn.Sequential(
             nn.MaxPool3d(2),
-            DoubleConv(in_channels, out_channels, activation_func, mid_channels)
+            DoubleConv(in_channels, out_channels, activation_func1, activation_func2, mid_channels)
         )
 
     def forward(self, x):
@@ -45,7 +59,7 @@ class Down(nn.Module):
 
 # Decoding block without skip connections
 class Up_noskip(nn.Module):
-    def __init__(self, in_channels, out_channels, activation_func = 'relu', mid_channles = None, bilinear=True):
+    def __init__(self, in_channels, out_channels, activation_func1 = 'relu', activation_func2='', mid_channles = None, bilinear=True):
         super().__init__()
         if bilinear:
             # scale_factor same as the varible of maxpool()
@@ -54,7 +68,7 @@ class Up_noskip(nn.Module):
             # transposed conv should have the same padding, stride, kernel size as the
             # corresponding down layer in order to maintain the same dimension
             self.up = nn.ConvTranspose3d(in_channels, in_channels, kernel_size=3, padding=1, stride=1)
-        self.upnoskip_dconv = DoubleConv(in_channels, out_channels, activation_func, mid_channles)
+        self.upnoskip_dconv = DoubleConv(in_channels, out_channels, activation_func1, activation_func2, mid_channles)
     
     def forward(self, x):
         x = self.up(x)
@@ -63,11 +77,19 @@ class Up_noskip(nn.Module):
     
 # Decoding block with skip connections
 class Up(nn.Module):
-    def __init__(self, in_channels, out_channels, activation_func = 'relu', mid_channles = None, bilinear=True):
-        pass
-
-    def forward(self, x):
-        pass
+    def __init__(self, in_channels, skip_connections_channels, out_channels, activation_func1 = 'relu', activation_func2='', mid_channles = None, bilinear=True):
+        super().__init__()
+        if bilinear:
+            self.up = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=True)
+        else:
+            self.up = nn.ConvTranspose3d(in_channels, in_channels, kernel_size=3, padding=1, stride=1)
+        self.up_dconv = DoubleConv(in_channels+skip_connections_channels, out_channels, activation_func1, activation_func2, mid_channles)
+        
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        x = torch.cat([x2, x1], dim =1)
+        x = self.up_dconv(x)
+        return x
 
 class InConv(nn.Module):
     def __init__(self, in_channels, out_channels, activation_func='relu'):
@@ -79,25 +101,74 @@ class InConv(nn.Module):
         return x
     
 class OutConv(nn.Module):
-    def __init__(self, in_channels, out_channels, activation_func = 'relu'):
+    def __init__(self, in_channels, out_channels, activation_func1 = 'relu', activation_func2 = ''):
         super().__init__()
-        self.conv = DoubleConv(in_channels, out_channels, activation_func, in_channels)
+        self.conv = DoubleConv(in_channels, out_channels, activation_func1, activation_func2, in_channels)
     
     def forward(self, x):
         x = self.conv(x)
         return x
 
-class SimpleUNet3D(nn.Module):
-    def __init__(self, activation_func, in_channels, out_channels = 1):
+class UNetEncoder_noskips(nn.Module):
+    def __init__(self, activation_func, in_channels):
         super().__init__()
+        self.act         = activation_func
+        self.in_channels = in_channels
+        self.n1          = in_channels * 2
+        self.n2          = self.n1 * 2
+        self.n3          = self.n2 * 2
+        self.n4          = self.n3 * 2 
+
+        self.inc   = InConv(self.in_channels, self.n1, self.act)
+        self.down1 = Down(self.n1, self.n2, self.act)
+        self.down2 = Down(self.n2, self.n3, self.act)
+        self.down3 = Down(self.n3, self.n4, self.act)
+    
+    def forward(self, x):
+        x = self.inc(x)
+        x = self.down1(x)
+        x = self.down2(x)
+        x = self.down3(x)
+        return x
+    
+class UNetDecoder_noskips(nn.Module):
+    def __init__(self, activation_func, in_channels, out_channels = 1, exp_type=''):
+        super().__init__()
+        self.exp_type     = exp_type
         self.act          = activation_func
         self.in_channels  = in_channels
-        self.n1 = in_channels * 2
-        self.n2 = self.n1 * 2
-        self.n3 = self.n2 * 2
-        self.n4 = self.n3 * 2
-        # out_channels should be 1. Because we like to output an image,
-        # which will be the corrected segmented initial image. 
+        self.n1           = in_channels * 2
+        self.n2           = self.n1 * 2
+        self.n3           = self.n2 * 2
+        self.n4           = self.n3 * 2
+        self.out_channels = out_channels   
+
+        self.up1   = Up_noskip(self.n4, self.n3, self.act)
+        self.up2   = Up_noskip(self.n3, self.n2, self.act)
+        self.up3   = Up_noskip(self.n2, self.n1, self.act)
+        if self.exp_type == 'binary_class':
+            self.outc  = OutConv(self.n1, self.out_channels, self.act, 'sigmoid') 
+        else:
+            self.outc = OutConv(self.n1, self.out_channels, self.act)
+    
+    def forward(self, x):
+        x = self.up1(x)
+        x = self.up2(x)
+        x = self.up3(x)
+        x = self.outc(x)
+        return x
+
+# no skip connections
+class SimpleUNet3D(nn.Module):
+    def __init__(self, activation_func, in_channels, out_channels = 1, exp_type=''):
+        super().__init__()
+        self.exp_type     = exp_type
+        self.act          = activation_func
+        self.in_channels  = in_channels
+        self.n1           = in_channels * 2
+        self.n2           = self.n1 * 2
+        self.n3           = self.n2 * 2
+        self.n4           = self.n3 * 2
         self.out_channels = out_channels 
 
         self.inc   = InConv(self.in_channels, self.n1, self.act)
@@ -107,16 +178,280 @@ class SimpleUNet3D(nn.Module):
         self.up1   = Up_noskip(self.n4, self.n3, self.act)
         self.up2   = Up_noskip(self.n3, self.n2, self.act)
         self.up3   = Up_noskip(self.n2, self.n1, self.act)
-        self.outc  = OutConv(self.n1, self.out_channels, self.act) 
+        if self.exp_type == 'binary_class':
+            self.outc  = OutConv(self.n1, self.out_channels, self.act, 'sigmoid') 
+        else:
+            self.outc = OutConv(self.n1, self.out_channels, self.act)
 
     def forward(self, x):
         x = self.inc(x)
         x = self.down1(x)
         x = self.down2(x)
         x = self.down3(x)
-        
+
         x = self.up1(x)
         x = self.up2(x)
         x = self.up3(x)
         x = self.outc(x)
         return x
+
+# with skip connections
+class UNet3D(nn.Module):
+    def __init__(self, activation_func, in_channels, out_channels = 1, exp_type=''):
+        super().__init__()
+        self.exp_type     = exp_type
+        self.act          = activation_func
+        self.in_channels  = in_channels
+        self.n1           = in_channels * 2
+        self.n2           = self.n1 * 2
+        self.n3           = self.n2 * 2
+        self.n4           = self.n3 * 2
+        # out_channels should be 1. Because we like to output an image,
+        # which will be the corrected segmented initial image. 
+        self.out_channels = out_channels 
+
+        self.inc   = InConv(self.in_channels, self.n1, self.act)
+        self.down1 = Down(self.n1, self.n2, self.act)
+        self.down2 = Down(self.n2, self.n3, self.act)
+        self.down3 = Down(self.n3, self.n4, self.act)
+        self.up1   = Up(self.n4, self.n3, self.n3, self.act)
+        self.up2   = Up(self.n3, self.n2, self.n2, self.act)
+        self.up3   = Up(self.n2, self.n1, self.n1, self.act)
+        if self.exp_type == 'binary_class':
+            self.outc  = OutConv(self.n1, self.out_channels, self.act, 'sigmoid') 
+        else:
+            self.outc = OutConv(self.n1, self.out_channels, self.act)
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+
+        x = self.up1(x4, x3)
+        x = self.up2(x, x2)
+        x = self.up3(x, x1)
+        x = self.outc(x)
+        return x
+
+class UNetDecoder(nn.Module):
+    def __init__(self, activation_func, in_channels, out_channels = 1, exp_type=''):
+        super().__init__()
+        self.exp_type     = exp_type
+        self.act          = activation_func
+        self.in_channels  = in_channels
+        self.n1           = in_channels * 2
+        self.n2           = self.n1 * 2
+        self.n3           = self.n2 * 2
+        self.n4           = self.n3 * 2
+        self.out_channels = out_channels
+
+        self.up1   = Up(self.n4, self.n3, self.n3, self.act)
+        self.up2   = Up(self.n3, self.n2, self.n2, self.act)
+        self.up3   = Up(self.n2, self.n1, self.n1, self.act)
+        if self.exp_type == 'binary_class':
+            self.outc  = OutConv(self.n1, self.out_channels, self.act, 'sigmoid') 
+        else:
+            self.outc = OutConv(self.n1, self.out_channels, self.act) 
+        
+    def forward(self, x1, x2, x3, x4):
+        x = self.up1(x4, x3)
+        x = self.up2(x, x2)
+        x = self.up3(x, x1)
+        x = self.outc(x)
+        return x
+
+class UNetEncoder(nn.Module):
+    def __init__(self, activation_func, in_channels):
+        super().__init__()
+        self.act = activation_func
+        self.in_channels  = in_channels
+        self.n1           = in_channels * 2
+        self.n2           = self.n1 * 2
+        self.n3           = self.n2 * 2
+        self.n4           = self.n3 * 2
+
+        self.inc   = InConv(self.in_channels, self.n1, self.act)
+        self.down1 = Down(self.n1, self.n2, self.act)
+        self.down2 = Down(self.n2, self.n3, self.act)
+        self.down3 = Down(self.n3, self.n4, self.act)
+    
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        return x1, x2, x3, x4
+
+class GraphUNet(nn.Module):
+    '''
+    Implementation of the model Graph U-Net proposed in the paper
+    <https://arxiv.org/abs/1905.05178>, which implements a U-Net
+    architecture with graph pooling and unpooling operations.
+
+    The current implementation was adopted from the pytorch geometric
+    library <https://pytorch-geometric.readthedocs.io>
+    
+    Parameters
+    ----------
+    in_channels (int): Size of node features
+    hidden_channels (int): Size of node features in the hidden layers
+    out_channels (int): Size of node features in the output layer (embeddings dimension)
+    depth (int): The depth of the graph unet
+    pool_ratios (float, list(float)): graph pooling ratio for each depth
+    sum_res (bool): How to perform the skip connections. If True use sumation if False use concatenation
+    act (string): Which nonlinearity to use
+
+    '''
+    def __init__(self, in_channels, hidden_channels, out_channels, depth=3, pool_ratios=0.5, sum_res=False, act='relu'):
+        super().__init__()
+        assert depth>=1, f'Initializing GraphUNet, the depth parameter {depth} is invalid'
+        self.in_channels     = in_channels
+        self.hidden_channels = hidden_channels
+        self.out_channels    = out_channels
+        self.depth           = depth
+        if isinstance(pool_ratios, list):
+            assert len(pool_ratios) == depth, f'Initializing GraphUNet, pool ratios length {len(pool_ratios)} mismatch with depth{depth}'
+            self.pool_ratios = pool_ratios
+        else:
+            self.pool_ratios = [pool_ratios for i in range(depth)]
+        self.act             = act_layer(act)
+        self.sum_res         = sum_res
+
+        #---------- ENCODER
+        self.down_convs = nn.ModuleList()
+        self.pools      = nn.ModuleList()
+        self.down_convs.append(GCNConv(in_channels, hidden_channels, improved=True))
+        for i in range(depth):
+            self.pools.append(TopKPooling(hidden_channels, self.pool_ratios[i]))
+            self.down_convs.append(GCNConv(hidden_channels, hidden_channels, improved=True))
+        
+        #---------- DECODER
+        in_channels2 = hidden_channels if sum_res else 2*hidden_channels
+        self.up_convs = torch.nn.ModuleList()
+        for i in range(depth-1):
+            self.up_convs.append(GCNConv(in_channels2, hidden_channels, improved=True))
+        self.up_convs.append(GCNConv(in_channels2, out_channels, improved=True))
+        self.reset_parameters()
+    
+    def reset_parameters(self):
+        '''
+        Reset all learnable parameters of the module
+        '''
+        for conv in self.down_convs:
+            conv.reset_parameters()
+        for pool in self.pools:
+            pool.reset_parameters()
+        for conv in self.up_convs: 
+            conv.reset_parameters()
+
+    def __repr__(self):
+        return (f'{self.__class__.__name__}({self.in_channels}, '
+                f'{self.hidden_channels}, {self.out_channels}, '
+                f'depth={self.depth}, pool_ratios={self.pool_ratios})')
+    
+    def augment_adj(self, edge_index, edge_weight, num_nodes):
+        '''
+        The authors of the paper proposed instead of using A use A^2, 
+        where A is the adjacency matrix. By doing so, you reduce the number
+        of isolated nodes created due to pooling layers
+
+        Parameters
+        ----------
+        edge_index
+        edg_weight
+        num_nodes
+
+        Return
+        ----------
+        edge_index: updated edje_index matrix
+        edg_weight: updated edge_weight matrix
+        '''
+        edge_index, edge_weight = remove_self_loops(edge_index, edge_weight)
+        edge_index, edge_weight = add_self_loops(edge_index, edge_weight, num_nodes = num_nodes)
+        adj = to_torch_csr_tensor(edge_index, edge_weight, size=(num_nodes, num_nodes))
+        adj = (adj @ adj).to_sparse_coo()
+        edge_index, edge_weight = adj.indices(), adj.values()
+        edge_index, edge_weight = remove_self_loops(edge_index, edge_weight)
+        return edge_index, edge_weight
+
+
+    def forward(self, x, edge_index, batch=None):
+        if batch == None:   batch = edge_index.new_zeros(x.size(0))
+        edge_weight = x.new_ones(edge_index.size(1))
+
+        #---------- ENCODING
+        x = self.down_convs[0](x, edge_index, edge_weight)
+        x = self.act(x)
+
+        # variables to keep track for pooling/unpooling
+        xs           = [x]
+        edge_indices = [edge_index]
+        edge_weights = [edge_weight]
+        perms        = []
+
+        for i in range(1, self.depth+1):
+            edge_index, edge_weight = self.augment_adj(edge_index, edge_weight, x.size(0))
+            x, edge_index, edge_weight, batch, perm, _ = self.pools[i-1](x, edge_index, edge_weight, batch)
+
+            x = self.down_convs[i](x, edge_index, edge_weight)
+            x = self.act(x)
+
+            if i < self.depth:
+                xs += [x]
+                edge_indices += [edge_index]
+                edge_weights += [edge_weight]
+            perms += [perm]
+        
+        #---------- DECODING
+        for i in range(self.depth):
+            j           = self.depth-1-i
+            
+            res         = xs[j]
+            edge_index  = edge_indices[j]
+            edge_weight = edge_weights[j]
+            perm        = perms[j]
+
+            up          = torch.zeros_like(res)
+            up[perm]    = x
+            x           = res + up if self.sum_res else torch.cat((res, up), dim=-1)
+
+            x           = self.up_convs[i](x, edge_index, edge_weight)
+            x           = self.act(x) if i < self.depth-1 else x
+        
+        return x
+
+# no skip connections
+class CombNet_v1(nn.Module):
+    def __init__(self, 
+                 activation_func_unet, 
+                 activation_func_graph, 
+                 in_channels_unet,
+                 hidden_channels_graph,
+                 depth_graph=3, 
+                 pool_ratios_graph=0.5, 
+                 sum_res_graph=False,
+                 out_channels_unet = 1, 
+                 exp_type = ''):
+        
+        super().__init__()
+        
+        self.encoder      = UNetEncoder_noskips(activation_func_unet, 
+                                                in_channels_unet)
+        
+        in_channels_graph = -1 # the flatten image that the encoder produces
+        self.graph_unet   = GraphUNet(in_channels_graph, 
+                                      hidden_channels_graph, 
+                                      in_channels_graph, 
+                                      depth_graph, 
+                                      pool_ratios_graph,
+                                      sum_res_graph, 
+                                      activation_func_graph)
+        
+        self.decoder = UNetDecoder_noskips(activation_func_unet, 
+                                           in_channels_unet, 
+                                           out_channels_unet, 
+                                           exp_type)
+        
+    def forward():
+        pass

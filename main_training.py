@@ -8,7 +8,7 @@ from models import model_utils as mu
 def main():
 
     # this part can be improved. For now it's ok
-    config_file = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/test_exp_cpu.py'
+    config_file = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/unet_skip.py'
     config      = MYParser.MyParser(config_file)
     config      = config.config_namespace
 

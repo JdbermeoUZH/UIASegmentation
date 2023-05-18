@@ -63,7 +63,7 @@ def get_dataloader_single(type_of_loader,
     custom_loader = DataLoader(dataset,
                                batch_size  = batch_size,
                                shuffle     = shuffle,
-                               num_workers = min(num_workers, batch_size),
+                               num_workers = num_workers,
                                pin_memory  = False
                                )
     
@@ -129,15 +129,12 @@ class ToTensor():
 
         imag = torch.from_numpy(imag)
         imag = imag.type(torch.float32)
-        imag = imag.to(self.device)
 
         mask = torch.from_numpy(mask)
         mask = mask.type(torch.int16)
-        mask = mask.to(self.device)
 
         segm = torch.from_numpy(segm)
         segm = segm.type(torch.int8)
-        segm = segm.to(self.device)
 
         item['imag'] = imag
         item['mask'] = mask

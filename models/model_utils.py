@@ -16,8 +16,21 @@ def get_model(which_model, config):
     model: Torch neural network
     '''
     if which_model == 'unet_no_skip_connections':
-        model = models.SimpleUNet3D(config.activation_function, 1, 1)
+        model = models.SimpleUNet3D(activation_func = config.activation_function, 
+                                    in_channels     = 1, 
+                                    out_channels    = 1, 
+                                    exp_type        = config.experiment_type)
         return model
+    elif which_model == 'unet_skip_connections':
+        model = models.UNet3D(activation_func = config.activation_function,
+                              in_channels     = 1,
+                              out_channels    = 1,
+                              exp_type        = config.experiment_type)
+        return model
+    elif which_model == 'graph-unet':
+        return None
+    else:
+        raise NotImplementedError(f'The model {which_model} is not implemented')
 
 def get_optimizer(model, which_optimizer, lr=0.01, wd=0.01):
     '''
@@ -40,7 +53,7 @@ def get_optimizer(model, which_optimizer, lr=0.01, wd=0.01):
         return optimizer
     elif which_optimizer.lower() == 'adamw':
         # Good for image classification. To achieve state-of-the-art results is used 
-        # with OneCycleLR
+        # with OneCycleLR scheduler
         optimizer = torch.optim.AdamW(model.parameters(), lr = lr, weight_decay = wd)
         return optimizer
     elif which_optimizer.lower() == 'adagrad':
@@ -68,33 +81,19 @@ def get_loss(which_loss):
     return None
 
 #---------- losses
-def dice_loss(batch_preds, batch_targets, smooth = 1e-05, sigmoid = True, reduction = 'mean'):
-    print("mpeeneiiiii edw???")
-    print(batch_preds.shape)
-    print(batch_targets.shape)
-
-    batch_preds   = batch_preds.float()
-    batch_targets = batch_targets.float()
-
-    if sigmoid == True:
-        batch_preds = torch.sigmoid(batch_preds)
+def dice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean'):
     
-    dice_losses = []
-    for image in range(batch_preds.shape[0]):
-        pflat        = batch_preds[image, :, :, :, :, :].contiguous().view(-1)
-        tflat        = batch_targets[image, :, :, :, :, :].contiguous().view(-1)
-        intersection = torch.sum(pflat * tflat)
-        print(intersection)
-        print(torch.sum(pflat), torch.sum(tflat))
-        dice_loss    = 1 - ((2. * intersection + smooth)/(torch.sum(pflat) + torch.sum(tflat) + smooth))
-        dice_losses.append(dice_loss)
-    dice_losses = torch.stack(dice_losses)
+    pflat        = batch_preds.float().contiguous().view(batch_preds.shape[0], -1)
+    tflat        = batch_targets.float().contiguous().view(batch_targets.shape[0], -1)
+    intersection = torch.sum(torch.mul(pflat, tflat), dim = 1)
+    nom          = 2. * intersection + smooth
+    denom        = torch.sum(pflat, dim=1) + torch.sum(tflat, dim = 1) + smooth
+    dice_losses  = 1 - nom/denom
     
     if reduction == 'mean':
         loss = torch.mean(dice_losses)
     elif reduction == 'sum':
         loss = torch.sum(dice_losses)
     else:
-        raise NotImplementedError(f'Dice loss reduction {reduction} not implemented')
-    print(loss)
-    return loss
+        raise NotImplementedError(f'Dice loss reduction {reduction} not implemented') 
+    return loss 
