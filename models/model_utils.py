@@ -27,8 +27,19 @@ def get_model(which_model, config):
                               out_channels    = 1,
                               exp_type        = config.experiment_type)
         return model
-    elif which_model == 'graph-unet':
-        return None
+    elif which_model == 'combnet_v1':
+        # encoder graph-unet and decoder without skip connections
+        model = models.CombNet_v1(activation_func_unet  = config.activation_function,
+                                  activation_func_graph = config.activation_function_g,
+                                  in_channels_unet      = 1,
+                                  hidden_channels_graph = config.hidden_channels_g,
+                                  depth_graph           = config.depth_g,
+                                  pool_ratios_graph     = config.pool_ration_g,
+                                  sum_res_graph         = config.sum_res_g,
+                                  out_channels_unet     = 1,
+                                  exp_type              = config.experiment_type
+        )
+        return model 
     else:
         raise NotImplementedError(f'The model {which_model} is not implemented')
 

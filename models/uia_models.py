@@ -264,7 +264,7 @@ class UNetDecoder(nn.Module):
 class UNetEncoder(nn.Module):
     def __init__(self, activation_func, in_channels):
         super().__init__()
-        self.act = activation_func
+        self.act          = activation_func
         self.in_channels  = in_channels
         self.n1           = in_channels * 2
         self.n2           = self.n1 * 2
@@ -377,6 +377,7 @@ class GraphUNet(nn.Module):
 
 
     def forward(self, x, edge_index, batch=None):
+        assert x.shape[-1] == self.in_channels, f'Inside the graphUnet, there is a mismatch in dimensions'
         if batch == None:   batch = edge_index.new_zeros(x.size(0))
         edge_weight = x.new_ones(edge_index.size(1))
 
@@ -419,7 +420,7 @@ class GraphUNet(nn.Module):
             x           = self.up_convs[i](x, edge_index, edge_weight)
             x           = self.act(x) if i < self.depth-1 else x
         
-        return x
+        return x, edge_index
 
 # no skip connections
 class CombNet_v1(nn.Module):
@@ -429,7 +430,7 @@ class CombNet_v1(nn.Module):
                  in_channels_unet,
                  hidden_channels_graph,
                  depth_graph=3, 
-                 pool_ratios_graph=0.5, 
+                 pool_ratios_graph=0.8, 
                  sum_res_graph=False,
                  out_channels_unet = 1, 
                  exp_type = ''):
@@ -439,7 +440,7 @@ class CombNet_v1(nn.Module):
         self.encoder      = UNetEncoder_noskips(activation_func_unet, 
                                                 in_channels_unet)
         
-        in_channels_graph = -1 # the flatten image that the encoder produces
+        in_channels_graph = 16*4*4*2 # the flatten image that the encoder produces
         self.graph_unet   = GraphUNet(in_channels_graph, 
                                       hidden_channels_graph, 
                                       in_channels_graph, 
@@ -453,5 +454,55 @@ class CombNet_v1(nn.Module):
                                            out_channels_unet, 
                                            exp_type)
         
-    def forward():
-        pass
+    def forward(self, node_fts, adj_mtx):
+        batch_shape = node_fts.shape
+        node_fts    = node_fts.view(batch_shape[0]*batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
+        
+        # pass all the patches through the unet encoder
+        batch_preds = []
+        minibatch   = 256
+        idx         = 0
+        while True:
+            index_start = idx * minibatch
+            index_end   = (idx + 1) * minibatch
+            idx        += 1
+            if index_start >= node_fts.shape[0]: break
+            if index_end > node_fts.shape[0]:   index_end = node_fts.shape[0]
+            preds = self.encoder(node_fts[index_start:index_end, :, :, :, :])
+            batch_preds.append(preds)
+        batch_preds   = torch.cat(batch_preds, dim = 0) 
+        batch_preds   = batch_preds.view(batch_shape[0], batch_shape[1], batch_preds.shape[1], batch_preds.shape[2], batch_preds.shape[3], batch_preds.shape[4])
+        encoder_shape = batch_preds.shape
+
+        # flatten the patches into 1 vector
+        batch_preds = batch_preds.view(batch_preds.shape[0], batch_preds.shape[1], -1)
+        
+        # pass the graph through the graph unet
+        batch_preds_g = []
+        adj_mtx_g     = []
+        # pass through the graph unet one graph at a time
+        for image in range(batch_shape[0]):
+            fts, adj = self.graph_unet(batch_preds[image], adj_mtx[image])
+            batch_preds_g.append(fts)
+            adj_mtx_g.append(adj)
+        batch_preds_g = torch.stack(batch_preds_g)
+        adj_mtx_g     = torch.stack(adj_mtx_g)
+
+        #unflatten the patches
+        batch_preds_g = batch_preds_g.view(encoder_shape[0], encoder_shape[1], encoder_shape[2], encoder_shape[3], encoder_shape[4], encoder_shape[5])
+        batch_preds_g = batch_preds_g.view(encoder_shape[0]*encoder_shape[1], encoder_shape[2], encoder_shape[3], encoder_shape[4], encoder_shape[5])
+        
+        # pass all the patches through the unet decoder
+        outputs     = []
+        idx         = 0
+        while True:
+            index_start = idx * minibatch
+            index_end   = (idx + 1) * minibatch
+            idx        += 1
+            if index_start >= batch_preds_g.shape[0]: break
+            if index_end > batch_preds_g.shape[0]:   index_end = batch_preds_g.shape[0]
+            preds = self.decoder(batch_preds_g[index_start:index_end, :, :, :, :])
+            outputs.append(preds)
+        outputs = torch.cat(outputs, dim = 0)
+        outputs = outputs.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
+        return outputs,  adj_mtx_g
