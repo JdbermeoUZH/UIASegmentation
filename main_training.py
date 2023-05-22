@@ -7,9 +7,8 @@ from models import model_utils as mu
 
 def main():
 
-    # this part can be improved. For now it's ok
-    config_file = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/graph_noskip.py'
-    config      = MYParser.MyParser(config_file)
+    config      = MYParser.MyParser()
+    # present hyper parameters
     config      = config.config_namespace
 
     #---------- initialize important variables
@@ -39,6 +38,7 @@ def main():
     
     #---------- TRAIN MODEL
     if config.only_unets_flag == True:
+        print("INFO: Train-v1 started")
         log = train.train_v1(model,
                              optimizer,
                              criterion,
@@ -50,6 +50,7 @@ def main():
                              test_dataloader, 
                              experiment_name)
     elif config.only_unets_flag == False:
+        print("INFO: Train-v2 started")
         log = train.train_v2(model,
                              optimizer,
                              criterion,
@@ -60,9 +61,12 @@ def main():
                              val_dataloader,
                              test_dataloader, 
                              experiment_name)
-        
+    print("INFO: training ended... exiting")
     return None
 
 # entry point
-if __name__ == '__main__':    
+if __name__ == '__main__':  
+    '''
+    RUN: python -c  config_file
+    '''  
     main()

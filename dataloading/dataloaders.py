@@ -64,7 +64,7 @@ def get_dataloader_single(type_of_loader,
                                batch_size  = batch_size,
                                shuffle     = shuffle,
                                num_workers = num_workers,
-                               pin_memory  = False
+                               pin_memory  = True
                                )
     
     return custom_loader
@@ -73,15 +73,14 @@ def get_dataloader_single(type_of_loader,
 #---------- helper functions
 def get_transform_train(config):
     transform_label  = get_label_transform(config.experiment_type)
-    '''
     transforms_train = ComposeTransforms([ToTensor(),
                                           RandomFlip(config.transforms_probability),
-                                          RandomRotate_90_180_270(config.transforms_probability),
+                                          #RandomRotate_90_180_270(config.transforms_probability),
                                           RandomAffine(config.transforms_probability),
                                           transform_label])
-    '''
-    transforms_train = ComposeTransforms([ToTensor(),
-                                          transform_label])
+    
+    
+    #transforms_train = ComposeTransforms([ToTensor(), transform_label])
     return transforms_train
 
 def get_transform_valid(config):
@@ -265,7 +264,7 @@ class RandomAffine():
 
         assert imag.ndim == mask.ndim == segm.ndim, "Inside Random Affine: dimensions mismatch"
 
-        if random_prob > self.prob:
+        if random_prob > 1-self.prob:
             if imag.ndim == 3:
                 imag = imag.unsqueeze(0)
                 mask = mask.unsqueeze(0)

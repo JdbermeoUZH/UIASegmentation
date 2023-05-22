@@ -11,23 +11,23 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import preprocessing_utils as pu
 
+
 #---------- paths 
 # hardcode them for now. Later maybe replace them.
-path_to_inter_results   = '/scratch/kvergopoulos/SemesterProject/intermediate_results'
-path_to_dataset_updated = '/scratch/kvergopoulos/SemesterProject/datasets/USZ_BrainArtery_updated'
+path_to_inter_results   = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/intermediate_results/figs'
+path_to_dataset_updated = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/intermediate_results/images_intermediate_folder/cropped_images'
 #---------- 
 
 #---------- def functions
 def calculate_distribution_resolution(path_to_data, path_save_results, round_decimal = 0):
-    paths_list   = pu.get_subjects_folders(path_to_data)
+    subjects_tofs_segm_dict = pu.locate_tof_mask_paths(path_to_data)
     voxel_sizes  = list()
     tofs_sizes   = list()
     resol_sizes  = list()
 
-    for mri_path in paths_list:
-        mri_files  = list(os.listdir(mri_path))
-        tof_images = [i for i in mri_files if i.lower().endswith('_tof.nii.gz')]
-        seg_images = [i for i in mri_files if i.lower().find('corrected_') != -1 and i.lower().find('real_corrected') == -1 ]
+    for key in subjects_tofs_segm_dict:
+        tof_images = subjects_tofs_segm_dict[key]['tof']
+        seg_images = subjects_tofs_segm_dict[key]['seg']
         # look both tof and seg image in order to assert that 
         # both images have the same vox size and same dimensions
         if len(tof_images) > 1:
@@ -39,10 +39,10 @@ def calculate_distribution_resolution(path_to_data, path_save_results, round_dec
             print(f'Warning: There are multiple segmentation images in {seg_images}, choose the first one')  
         seg_image = seg_images[0]
 
-        tof_voxel = pu.read_voxel_from_nii(os.path.join(mri_path, tof_image))
-        tof_size  = pu.read_dims_from_nii(os.path.join(mri_path, tof_image))
-        seg_voxel = pu.read_voxel_from_nii(os.path.join(mri_path, seg_image))
-        seg_size  = pu.read_dims_from_nii(os.path.join(mri_path, seg_image))
+        tof_voxel = pu.read_voxel_from_nii(tof_image)
+        tof_size  = pu.read_dims_from_nii(tof_image)
+        seg_voxel = pu.read_voxel_from_nii(seg_image)
+        seg_size  = pu.read_dims_from_nii(seg_image)
 
         assert tof_size == seg_size
         assert len(tof_size) == len(seg_size) == len(seg_voxel) == len(tof_voxel) == 3
@@ -73,7 +73,7 @@ def calculate_distribution_resolution(path_to_data, path_save_results, round_dec
     ax1.set_xlabel('Frequencies')
     ax1.set_ylabel('Dimensions order by their volumes')
     ax1.set_title('Histogram of Dimension sizes')
-    fig1.savefig(os.path.join(path_save_results, 'dimensions_dist.png'), bbox_inches='tight')
+    fig1.savefig(os.path.join(path_save_results, 'dimensions_dist_v2.png'), bbox_inches='tight')
 
     counter_resolutions   = Counter(resol_sizes)
     resols, resols_counts = zip(*counter_resolutions.items())
@@ -86,7 +86,7 @@ def calculate_distribution_resolution(path_to_data, path_save_results, round_dec
     ax2.set_xlabel('Frequencies')
     ax2.set_ylabel('Resolutions sorted')
     ax2.set_title('Histogram of Resolutions')
-    fig2.savefig(os.path.join(path_save_results, 'resolutions_dist.png'), bbox_inches='tight')
+    fig2.savefig(os.path.join(path_save_results, 'resolutions_dist_v2.png'), bbox_inches='tight')
 
 
 
@@ -131,11 +131,11 @@ def calculate_distribution_voxelsizes(path_to_data, path_save_results, round_dec
     ax.set_xlabel('Frequencies')
     ax.set_ylabel('Voxel sizes order by their volumes')
     ax.set_title('Histogram of Voxel size')
-    fig.savefig(os.path.join(path_save_results, 'voxels_dist.png'), bbox_inches='tight')
+    fig.savefig(os.path.join(path_save_results, 'voxels_dist_v2.png'), bbox_inches='tight')
 
 
 #---------- run functions
 # Assume that the dataset has pass the first step of preprocessing.
 # Meaning that all the important files, are saved as .nii images.
-calculate_distribution_voxelsizes(path_to_dataset_updated, path_to_inter_results, round_decimal = 3)
+#calculate_distribution_voxelsizes(path_to_dataset_updated, path_to_inter_results, round_decimal = 3)
 calculate_distribution_resolution(path_to_dataset_updated, path_to_inter_results, round_decimal = 3)

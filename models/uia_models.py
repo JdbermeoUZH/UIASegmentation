@@ -46,6 +46,23 @@ class DoubleConv(nn.Module):
     def forward(self, x):
         return self.double_conv(x)
 
+class SingleConv(nn.Module):
+    def __init__(self, in_channels, out_channels, activation_func1 = ''):
+        super().__init__()
+        if activation_func1 == '':
+            self.single_conv = nn.Sequential(
+                nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+            )
+        else:
+            self.activation1  = act_layer(activation_func1)
+            self.single_conv = nn.Sequential(
+                nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=1, padding=1),
+                self.activation1
+            )
+    
+    def forward(self, x):
+        return self.single_conv(x)
+    
 class Down(nn.Module):
     def __init__(self, in_channels, out_channels, activation_func1='relu', activation_func2='', mid_channels = None):
         super().__init__()
@@ -101,9 +118,9 @@ class InConv(nn.Module):
         return x
     
 class OutConv(nn.Module):
-    def __init__(self, in_channels, out_channels, activation_func1 = 'relu', activation_func2 = ''):
+    def __init__(self, in_channels, out_channels, activation_func1 = ''):
         super().__init__()
-        self.conv = DoubleConv(in_channels, out_channels, activation_func1, activation_func2, in_channels)
+        self.conv =  SingleConv(in_channels, out_channels, activation_func1)
     
     def forward(self, x):
         x = self.conv(x)
@@ -147,7 +164,7 @@ class UNetDecoder_noskips(nn.Module):
         self.up2   = Up_noskip(self.n3, self.n2, self.act)
         self.up3   = Up_noskip(self.n2, self.n1, self.act)
         if self.exp_type == 'binary_class':
-            self.outc  = OutConv(self.n1, self.out_channels, self.act, 'sigmoid') 
+            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid') 
         else:
             self.outc = OutConv(self.n1, self.out_channels, self.act)
     
@@ -179,7 +196,7 @@ class SimpleUNet3D(nn.Module):
         self.up2   = Up_noskip(self.n3, self.n2, self.act)
         self.up3   = Up_noskip(self.n2, self.n1, self.act)
         if self.exp_type == 'binary_class':
-            self.outc  = OutConv(self.n1, self.out_channels, self.act, 'sigmoid') 
+            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid') 
         else:
             self.outc = OutConv(self.n1, self.out_channels, self.act)
 
@@ -218,7 +235,7 @@ class UNet3D(nn.Module):
         self.up2   = Up(self.n3, self.n2, self.n2, self.act)
         self.up3   = Up(self.n2, self.n1, self.n1, self.act)
         if self.exp_type == 'binary_class':
-            self.outc  = OutConv(self.n1, self.out_channels, self.act, 'sigmoid') 
+            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid') 
         else:
             self.outc = OutConv(self.n1, self.out_channels, self.act)
 
@@ -250,7 +267,7 @@ class UNetDecoder(nn.Module):
         self.up2   = Up(self.n3, self.n2, self.n2, self.act)
         self.up3   = Up(self.n2, self.n1, self.n1, self.act)
         if self.exp_type == 'binary_class':
-            self.outc  = OutConv(self.n1, self.out_channels, self.act, 'sigmoid') 
+            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid') 
         else:
             self.outc = OutConv(self.n1, self.out_channels, self.act) 
         
@@ -377,7 +394,7 @@ class GraphUNet(nn.Module):
 
 
     def forward(self, x, edge_index, batch=None):
-        assert x.shape[-1] == self.in_channels, f'Inside the graphUnet, there is a mismatch in dimensions'
+        assert x.shape[-1] == self.in_channels, f'Inside the graphUnet, there is a mismatch in dimensions between {x.shape} and {self.in_channels}'
         if batch == None:   batch = edge_index.new_zeros(x.size(0))
         edge_weight = x.new_ones(edge_index.size(1))
 
@@ -429,11 +446,11 @@ class CombNet_v1(nn.Module):
                  activation_func_graph, 
                  in_channels_unet,
                  hidden_channels_graph,
-                 depth_graph=3, 
-                 pool_ratios_graph=0.8, 
-                 sum_res_graph=False,
+                 depth_graph       = 3, 
+                 pool_ratios_graph = 0.8, 
+                 sum_res_graph     = False,
                  out_channels_unet = 1, 
-                 exp_type = ''):
+                 exp_type          = ''):
         
         super().__init__()
         
@@ -477,7 +494,7 @@ class CombNet_v1(nn.Module):
         # flatten the patches into 1 vector
         batch_preds = batch_preds.view(batch_preds.shape[0], batch_preds.shape[1], -1)
         
-        # pass the graph through the graph unet
+        # pass the graphs through the graph unet
         batch_preds_g = []
         adj_mtx_g     = []
         # pass through the graph unet one graph at a time
@@ -489,7 +506,6 @@ class CombNet_v1(nn.Module):
         adj_mtx_g     = torch.stack(adj_mtx_g)
 
         #unflatten the patches
-        batch_preds_g = batch_preds_g.view(encoder_shape[0], encoder_shape[1], encoder_shape[2], encoder_shape[3], encoder_shape[4], encoder_shape[5])
         batch_preds_g = batch_preds_g.view(encoder_shape[0]*encoder_shape[1], encoder_shape[2], encoder_shape[3], encoder_shape[4], encoder_shape[5])
         
         # pass all the patches through the unet decoder

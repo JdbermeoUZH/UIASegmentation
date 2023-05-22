@@ -334,7 +334,7 @@ def adjust_shapes(nii_img, new_voxel_size, new_dimensions=None):
         new_nii_img = nibabel.processing.conform(nii_img,
                                                  voxel_size = new_voxel_size, 
                                                  out_shape = new_dimensions, 
-                                                 order = 0, cval=0, orientation='LPS')
+                                                 order = 3, cval=0, orientation='LPS')
     return new_nii_img.get_fdata(), new_nii_img.affine, new_nii_img.header
 
 def save_for_deep_learning(name, img_path, seg_path, mask_path, f_dir, apply_resc, new_vox_size, new_dims=None, lock= None, multipreproc = None):
@@ -452,7 +452,7 @@ def skull_stripping(img_path, name, sk_dir):
     # which the brain is not removed (0.0 by default)
     bet.inputs.vertical_gradient = 0.0
     # Set the radius of curvature (mm) for final surface tessellation
-    bet.inputs.radius  = 25
+    bet.inputs.radius  = 75
     #bet.robust        = True
     # Run the BET interface object
     bet.run()

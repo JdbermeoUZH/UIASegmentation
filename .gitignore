@@ -4,5 +4,6 @@ general_utils/__pycache__/*
 configs/__pycache__/*
 dataloading/__pycache__/*
 models/__pycache__/*
+models/*.pyc
 personal_notes.txt
 

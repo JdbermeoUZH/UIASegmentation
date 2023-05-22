@@ -20,8 +20,8 @@ import preprocessing_utils as pu
 
 #---------- paths & hyperparameters
 # hardcode them for now. Later maybe replace them.
-multi_proc                = False
-n_threads                 = 22
+multi_proc                = True
+n_threads                 = 2
 remove_lower_slices       = False
 number_of_slices          = 10
 apply_n4_bias             = False
@@ -33,12 +33,12 @@ apply_thresholding_gl     = False
 global_threshold          = 99.5
 apply_rescaling           = True
 voxel_size                = np.array([0.3, 0.3, 0.6]) # hyper parameters to be set
-dimensions                = np.array([560, 640, 175]) # or None to leave untouch the initial dimensions
+dimensions                = np.array([560, 640, 160]) # or None to leave untouch the initial dimensions
 save_logs                 = True
 
 path_to_logs              = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/intermediate_results'
 path_to_dataset           = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/intermediate_results/images_intermediate_folder/global_thresholded_99.5'
-path_to_save_process_data = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/datasets'
+path_to_save_process_data = '/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed/USZ_BrainArtery/USZ_BrainArtery_GNN'
 #----------
 
 def preprocess_file(file_idx,
@@ -112,7 +112,7 @@ def preprocess_file(file_idx,
                                                multipreproc)
     if apply_sk_strip:
         # apply skull stripped not only to mask but to init image
-        init_img_skull_stip = True
+        init_img_skull_stip = False
         sk_dir = os.path.join(path_temp_preproc, 'skull_stripped')
         pu.create_dir(sk_dir, lock, multipreproc)
         if sk_strip_tool == 'bet':
@@ -241,7 +241,6 @@ if __name__ == '__main__':
                             path_to_temp_preproc,
                             path_to_save_process_data
                             )
-            if idx > 10: break
     else:
         # use a Manager object to create a shared 'Lock' object
         manager    = multiprocessing.Manager()

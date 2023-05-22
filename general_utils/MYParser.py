@@ -1,3 +1,4 @@
+import argparse
 from types import ModuleType
 from argparse import Namespace
 from importlib.machinery import SourceFileLoader
@@ -7,14 +8,24 @@ from importlib.machinery import SourceFileLoader
 class MyParser:
     
     def __init__(self, config_file = ''):
+        self.init_parser()
         self.config_dict      = dict()  
         self.config_file      = config_file
         self.config_namespace = Namespace()
         
+        if self.config_file == '':
+            self.parser_inputs = self.parser.parse_args()
+            self.config_file   = self.parser_inputs.config_file
+    
         if self.config_file != '' and self.config_file.endswith('.py'):
             print(f'\n ### Reading the configuration from python file: ### \n{self.config_file} \n')
             self.load_from_py(self.config_file)
+            
     
+    def init_parser(self):
+        self.parser = argparse.ArgumentParser(description='Train UIASegmentation model')
+        self.parser.add_argument('-c', '--config_file', type = str, default='', help='Config file containing all the parameters')
+
     def load_from_py(self, config_file):
         '''
         Load the configuration file in python format and store it in config dict.

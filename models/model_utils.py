@@ -39,6 +39,9 @@ def get_model(which_model, config):
                                   out_channels_unet     = 1,
                                   exp_type              = config.experiment_type
         )
+        return model
+    elif which_model == 'combnet_v2':
+        model = models.CombNet_v2()
         return model 
     else:
         raise NotImplementedError(f'The model {which_model} is not implemented')
@@ -89,6 +92,8 @@ def get_loss(which_loss):
     '''
     if which_loss == 'dice_loss':
         return dice_loss
+    elif which_loss ==  'mse_dice_loss':
+        return mse_dice_loss
     return None
 
 #---------- losses
@@ -108,3 +113,24 @@ def dice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean'):
     else:
         raise NotImplementedError(f'Dice loss reduction {reduction} not implemented') 
     return loss 
+
+def mse_dice_loss(node_fts_preds, node_fts_gt, adj_preds, adj_gt, adj_mtx):
+    # TO BE IMPLEMENTED
+    d_loss = dice_loss(node_fts_preds, node_fts_gt)
+    print((adj_mtx-adj_preds).any() != 0)
+    return d_loss
+
+def dice_score_metric(batch_preds, batch_targets, smooth = 1e-05):
+    
+    pflat        = batch_preds.float().contiguous().view(batch_preds.shape[0], -1)
+    tflat        = batch_targets.float().contiguous().view(batch_targets.shape[0], -1)
+    intersection = torch.sum(torch.mul(pflat, tflat), dim = 1)
+    nom          = 2. * intersection + smooth
+    denom        = torch.sum(pflat, dim=1) + torch.sum(tflat, dim = 1) + smooth
+
+    dice_scores      = nom/denom
+    dice_scores_list = dice_scores.view(-1).cpu().tolist()
+    
+    del dice_scores
+    return dice_scores_list
+

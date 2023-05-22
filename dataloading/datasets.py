@@ -78,33 +78,34 @@ class UIAGraph_Dataset(Dataset):
             new_item = self.transform(new_item)
         
         # compute graph's adjacency matrix and node features based on coarse mask
-        adj_mtx    = utils.get_adjacency_matrix(new_item['mask'], 
-                                                self.patch_size, 
-                                                self.connectivity)
-        adj_mtx = adj_mtx.to_sparse_coo()
-        adj_mtx = adj_mtx.indices()
+        #adj_mtx    = utils.get_adjacency_matrix(new_item['mask'], 
+        #                                        self.patch_size, 
+        #                                        self.connectivity)
+        #adj_mtx = adj_mtx.to_sparse_coo()
+        #adj_mtx = adj_mtx.indices()
 
         node_feats = utils.get_nodes_features(new_item['imag'], 
                                               self.patch_size)
         
         # compute graph's adjacency matrix and node features based on groundtruth mask
-        segm_np = new_item['segm'].numpy()
-        if self.experiment != 'binary_class':   segm_np = np.where(segm_np > 0, 1, 0)
+        #segm_np = new_item['segm'].numpy()
+        #if self.experiment != 'binary_class':   segm_np = np.where(segm_np > 0, 1, 0)
         
-        segm_np        = cc3d.connected_components(segm_np, 
-                                                   connectivity = self.connectivity)
-        segm_con_tensor = torch.from_numpy(segm_np.astype('int16'))
-        del segm_np #remove unnecessary variables
+        #segm_np1        = cc3d.connected_components(segm_np, 
+        #                                            connectivity = self.connectivity)
+        #segm_con_tensor = torch.from_numpy(segm_np1.astype('int16'))
+        #del segm_np, segm_np1 #remove unnecessary variables
 
-        adj_mtx_gt    = utils.get_adjacency_matrix(segm_con_tensor,
-                                                   self.patch_size,
-                                                   self.connectivity)
-        del segm_con_tensor #remove unnecessary variables
-        adj_mtx_gt = adj_mtx_gt.to_sparse_coo()
-        adj_mtx_gt = adj_mtx_gt.indices()
+        #adj_mtx_gt    = utils.get_adjacency_matrix(segm_con_tensor,
+        #                                           self.patch_size,
+        #                                           self.connectivity)
+        #del segm_con_tensor #remove unnecessary variables
+        #adj_mtx_gt = adj_mtx_gt.to_sparse_coo()
+        #adj_mtx_gt = adj_mtx_gt.indices()
 
         node_feats_gt = utils.get_nodes_features(new_item['segm'],
                                                  self.patch_size)
         node_feats    = node_feats.unsqueeze(1)
         node_feats_gt = node_feats_gt.unsqueeze(1)
-        return new_item['name'], adj_mtx, node_feats, adj_mtx_gt, node_feats_gt
+        del new_item
+        return torch.tensor([0]), node_feats, torch.tensor([0]), node_feats_gt

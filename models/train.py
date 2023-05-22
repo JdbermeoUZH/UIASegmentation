@@ -1,6 +1,8 @@
 import time
 import torch
+import numpy as np
 from tqdm import tqdm
+from models import model_utils as mu
 
 def train_v2(model,
              optimizer,
@@ -25,7 +27,7 @@ def train_v2(model,
         running_loss_train = 0.0
         # each batch contains n_images, n_patches, 1 channel, patch_size_x, patch_size_y, patch_size_z
         with tqdm(train_dataloader, unit='batch') as tqdm_loader:
-            for names, adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
+            for adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
                 train_counter += 1
                 node_fts       = node_fts.to(device)
                 adj_mtx        = adj_mtx.to(device)
@@ -35,7 +37,7 @@ def train_v2(model,
         
                 optimizer.zero_grad()
                 node_preds, adj_preds = model(node_fts, adj_mtx)
-                loss_train            = criterion(node_preds, node_fts_gt, adj_preds, adj_mtx_gt)
+                loss_train            = criterion(node_preds, node_fts_gt, adj_preds, adj_mtx_gt, adj_mtx)
                 loss_train.backward()
                 optimizer.step()
                 running_loss_train   += loss_train.item()
@@ -44,6 +46,7 @@ def train_v2(model,
         train_end_time   = time.time()
         print(f'TRAINING: {time.ctime(train_end_time)}: epoch: {tepoch}/{nepochs} loss: {running_loss_train/train_counter}')
         #---------- 
+        
         '''
         #---------- VALIDATION LOOP
         model.eval()
@@ -51,7 +54,7 @@ def train_v2(model,
             valid_counter    = 0
             running_loss_val = 0.0
             with tqdm(valid_dataloader, unit='batch') as tqdm_loader:
-                for names, adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
+                for adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
                     valid_counter += 1
                     node_fts       = node_fts.to(device)
                     adj_mtx        = adj_mtx.to(device)
@@ -93,8 +96,7 @@ def train_v1(model,
         running_loss_train = 0.0
         # each batch contains n_images, n_patches, 1 channel, patch_size_x, patch_size_y, patch_size_z
         with tqdm(train_dataloader, unit='batch') as tqdm_loader:
-            for names, adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
-                
+            for adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
                 train_counter += 1
                 node_fts       = node_fts.to(device)
                 node_fts_gt    = node_fts_gt.to(device)
@@ -122,7 +124,6 @@ def train_v1(model,
                 optimizer.step()
                 running_loss_train += loss_train.item()
                 del loss_train, node_fts, node_fts_gt, adj_mtx, adj_mtx_gt, batch_preds
-
         #---------- print out message
         train_end_time   = time.time()
         print(f'TRAINING: {time.ctime(train_end_time)}: epoch: {tepoch}/{nepochs} loss: {running_loss_train/train_counter}')
@@ -133,8 +134,9 @@ def train_v1(model,
         with torch.no_grad():
             valid_counter    = 0
             running_loss_val = 0.0
+            dice_scores_val  = []
             with tqdm(valid_dataloader, unit='batch') as tqdm_loader:
-                for names, adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
+                for adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
                     
                     valid_counter += 1
                     node_fts       = node_fts.to(device)
@@ -157,10 +159,13 @@ def train_v1(model,
                         batch_preds.append(preds)
                     batch_preds = torch.cat(batch_preds, dim = 0)
                     batch_preds = batch_preds.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
-                    loss_val    = criterion(batch_preds, node_fts_gt)
+                    
+                    loss_val          = criterion(batch_preds, node_fts_gt)
                     running_loss_val += loss_val.item()
-                    del loss_val, node_fts, node_fts_gt, adj_mtx, adj_mtx_gt, batch_preds
+                    dice_score        = mu.dice_score_metric(batch_preds, node_fts_gt)
+                    dice_scores_val += dice_score
+                    del loss_val, node_fts, node_fts_gt, adj_mtx, adj_mtx_gt, batch_preds, dice_score
         #---------- print out message
         valid_end_time   = time.time()
-        print(f'VALIDATION: {time.ctime(valid_end_time)}: epoch: {tepoch}/{nepochs} loss: {running_loss_val/valid_counter}')
+        print(f'VALIDATION: {time.ctime(valid_end_time)}: epoch: {tepoch}/{nepochs} loss: {running_loss_val/valid_counter}, dice score: {np.mean(dice_scores_val)}')
         #----------
