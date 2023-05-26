@@ -522,3 +522,99 @@ class CombNet_v1(nn.Module):
         outputs = torch.cat(outputs, dim = 0)
         outputs = outputs.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
         return outputs,  adj_mtx_g
+    
+# no skip connections
+class CombNet_v2(nn.Module):
+    def __init__(self, 
+                 activation_func_unet, 
+                 activation_func_graph, 
+                 in_channels_unet,
+                 hidden_channels_graph,
+                 depth_graph       = 3, 
+                 pool_ratios_graph = 0.8, 
+                 sum_res_graph     = False,
+                 out_channels_unet = 1, 
+                 exp_type          = ''):
+        
+        super().__init__()
+        
+        self.encoder      = UNetEncoder(activation_func_unet, 
+                                        in_channels_unet)
+        
+        in_channels_graph = 16*4*4*2 # the flatten image that the encoder produces
+        self.graph_unet   = GraphUNet(in_channels_graph, 
+                                      hidden_channels_graph, 
+                                      in_channels_graph, 
+                                      depth_graph, 
+                                      pool_ratios_graph,
+                                      sum_res_graph, 
+                                      activation_func_graph)
+        
+        self.decoder = UNetDecoder(activation_func_unet, 
+                                   in_channels_unet, 
+                                   out_channels_unet, 
+                                   exp_type)
+        
+    def forward(self, node_fts, adj_mtx):
+        batch_shape = node_fts.shape
+        node_fts    = node_fts.view(batch_shape[0]*batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
+        
+        # pass all the patches through the unet encoder
+        x1          = []
+        x2          = []
+        x3          = []
+        x4          = []
+        minibatch   = 256
+        idx         = 0
+        while True:
+            index_start = idx * minibatch
+            index_end   = (idx + 1) * minibatch
+            idx        += 1
+            if index_start >= node_fts.shape[0]: break
+            if index_end > node_fts.shape[0]:   index_end = node_fts.shape[0]
+            px1, px2, px3, px4 = self.encoder(node_fts[index_start:index_end, :, :, :, :])
+            x1.append(px1)
+            x2.append(px2)
+            x3.append(px3)
+            x4.append(px4)
+        x1 = torch.cat(x1, dim = 0)
+        x2 = torch.cat(x2, dim = 0)
+        x3 = torch.cat(x3, dim = 0)
+        x4 = torch.cat(x4, dim = 0) 
+        x4 = x4.view(batch_shape[0], batch_shape[1], x4.shape[1], x4.shape[2], x4.shape[3], x4.shape[4])
+        encoder_shape = x4.shape
+
+        # flatten the patches into 1 vector
+        x4 = x4.view(x4.shape[0], x4.shape[1], -1)
+        
+        # pass the graphs through the graph unet
+        batch_preds_g = []
+        adj_mtx_g     = []
+        # pass through the graph unet one graph at a time
+        for image in range(batch_shape[0]):
+            fts, adj = self.graph_unet(x4[image], adj_mtx[image])
+            batch_preds_g.append(fts)
+            adj_mtx_g.append(adj)
+        batch_preds_g = torch.stack(batch_preds_g)
+        adj_mtx_g     = torch.stack(adj_mtx_g)
+
+        #unflatten the patches
+        batch_preds_g = batch_preds_g.view(encoder_shape[0]*encoder_shape[1], encoder_shape[2], encoder_shape[3], encoder_shape[4], encoder_shape[5])
+        
+        # pass all the patches through the unet decoder
+        outputs     = []
+        idx         = 0
+        while True:
+            index_start = idx * minibatch
+            index_end   = (idx + 1) * minibatch
+            idx        += 1
+            if index_start >= batch_preds_g.shape[0]: break
+            if index_end > batch_preds_g.shape[0]:   index_end = batch_preds_g.shape[0]
+            preds = self.decoder(x1[index_start:index_end, :, :, :, :],
+                                 x2[index_start:index_end, :, :, :, :],
+                                 x3[index_start:index_end, :, :, :, :],
+                                 batch_preds_g[index_start:index_end, :, :, :, :])
+            outputs.append(preds)
+        outputs = torch.cat(outputs, dim = 0)
+        outputs = outputs.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
+        return outputs,  adj_mtx_g

@@ -7,8 +7,7 @@ from models import model_utils as mu
 
 def main():
 
-    config      = MYParser.MyParser()
-    # present hyper parameters
+    config      = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/unet_skip.py')
     config      = config.config_namespace
 
     #---------- initialize important variables
@@ -26,12 +25,12 @@ def main():
     criterion       = mu.get_loss(config.which_loss)
     
     #---------- fetch the data
-    split_dict = utils.load_split_dict(config.path_data, 
-                                       config.path_splits, 
-                                       config.fold_id, 
-                                       config.train_data_name, 
-                                       config.valid_data_name, 
-                                       config.test_data_name)
+    split_dict = utils.load_data(config.path_data, 
+                                 config.path_splits, 
+                                 config.fold_id,
+                                 config.train_data_name,
+                                 config.valid_data_name,
+                                 config.test_data_name)
     
     #---------- init dataloaders
     train_dataloader, val_dataloader, test_dataloader = dataloaders.get_dataloaders_all(config, split_dict)
@@ -61,8 +60,15 @@ def main():
                              val_dataloader,
                              test_dataloader, 
                              experiment_name)
+        
+    # print messages save logs and plot some figs
+    log.save_config()
+    log.save_logs()
+    log.save_training_figs()
+    log.print_best_metrics()
+
     print("INFO: training ended... exiting")
-    return None
+    return
 
 # entry point
 if __name__ == '__main__':  

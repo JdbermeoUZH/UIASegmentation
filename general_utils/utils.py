@@ -265,11 +265,12 @@ def get_adjacency_matrix(volume, patch_size, connectivity):
     else:
         print(f'Inside Dataset class: Connectivity {connectivity} incorrect... Exiting')
         raise ValueError
+    del patches
     return adj_mtx
 
 
 #---------- General helper functions
-def load_split_dict(path_data, path_splits, fold_id, train_data_name, valid_data_name, test_data_name):
+def load_data(path_data, path_splits, fold_id, train_data_name, valid_data_name, test_data_name):
     
     if os.path.exists(path_data) == False:
         print(f'Path to data {path_data} doesnt exists... Exiting')

@@ -67,7 +67,8 @@ class UIAGraph_Dataset(Dataset):
         current_mask = current_mask.astype(np.int16)
         current_segm = current_segm.astype(np.int8)
 
-        assert current_imag.ndim == current_segm.ndim == current_mask.ndim, f'In the Dataset class mismatch in dimensions of images {current_name}'
+        assert current_imag.ndim == current_segm.ndim == current_mask.ndim, f'In the Dataset class, mismatch in dimensions of images {current_name}'
+        assert current_imag.shape == current_segm.shape == current_mask.shape, f'In the Dataset class, mismatch in shapes of images {current_name}'
         
         new_item = {'name': current_name, 
                     'imag': current_imag, 
@@ -78,11 +79,11 @@ class UIAGraph_Dataset(Dataset):
             new_item = self.transform(new_item)
         
         # compute graph's adjacency matrix and node features based on coarse mask
-        #adj_mtx    = utils.get_adjacency_matrix(new_item['mask'], 
-        #                                        self.patch_size, 
-        #                                        self.connectivity)
-        #adj_mtx = adj_mtx.to_sparse_coo()
-        #adj_mtx = adj_mtx.indices()
+        adj_mtx    = utils.get_adjacency_matrix(new_item['mask'], 
+                                                self.patch_size, 
+                                                self.connectivity)
+        adj_mtx = adj_mtx.to_sparse_coo()
+        adj_mtx = adj_mtx.indices()
 
         node_feats = utils.get_nodes_features(new_item['imag'], 
                                               self.patch_size)
@@ -107,5 +108,6 @@ class UIAGraph_Dataset(Dataset):
                                                  self.patch_size)
         node_feats    = node_feats.unsqueeze(1)
         node_feats_gt = node_feats_gt.unsqueeze(1)
+
         del new_item
-        return torch.tensor([0]), node_feats, torch.tensor([0]), node_feats_gt
+        return adj_mtx, node_feats, torch.tensor([0]), node_feats_gt

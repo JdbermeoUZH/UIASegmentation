@@ -193,15 +193,15 @@ class RandomFlip():
         mask = item['mask']
         segm = item['segm']
 
-        if random_probs[0]>self.prob:
+        if random_probs[0]>1-self.prob:
             imag = torch.flip(imag, dims = [0])
             mask = torch.flip(mask, dims = [0])
             segm = torch.flip(segm, dims = [0])
-        if random_probs[1]>self.prob:
+        if random_probs[1]>1-self.prob:
             imag = torch.flip(imag, dims = [1])
             mask = torch.flip(mask, dims = [1])
             segm = torch.flip(segm, dims = [1])
-        if random_probs[2]>self.prob:
+        if random_probs[2]>1-self.prob:
             imag = torch.flip(imag, dims = [2])
             mask = torch.flip(mask, dims = [2])
             segm = torch.flip(segm, dims = [2])
@@ -224,17 +224,17 @@ class RandomRotate_90_180_270():
         mask = item['mask']
         segm = item['segm']
         # rotate on xy-plane
-        if random_probs[0] > self.prob:
+        if random_probs[0] > 1-self.prob:
             imag = torch.rot90(imag, self.angles[random_angles[0]], [0,1])
             mask = torch.rot90(mask, self.angles[random_angles[0]], [0,1])
             segm = torch.rot90(segm, self.angles[random_angles[0]], [0,1])
         # rotate on yz-plane
-        if random_probs[1] > self.prob:
+        if random_probs[1] > 1-self.prob:
             imag = torch.rot90(imag, self.angles[random_angles[1]], [1,2])
             mask = torch.rot90(mask, self.angles[random_angles[1]], [1,2])
             segm = torch.rot90(segm, self.angles[random_angles[1]], [1,2])
         # rotate on zx-plane
-        if random_probs[2] > self.prob:
+        if random_probs[2] > 1-self.prob:
             imag = torch.rot90(imag, self.angles[random_angles[2]], [0,2])
             mask = torch.rot90(mask, self.angles[random_angles[2]], [0,2])
             segm = torch.rot90(segm, self.angles[random_angles[2]], [0,2])
