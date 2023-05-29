@@ -7,12 +7,11 @@ from models import model_utils as mu
 
 def main():
 
-    config      = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/unet_skip.py')
+    config      = MYParser.MyParser()
     config      = config.config_namespace
 
     #---------- initialize important variables
     device          = config.device
-    experiment_name = config.experiment_name
     n_epochs        = config.number_of_epochs
 
     model           = mu.get_model(config.which_net, config)
@@ -33,34 +32,53 @@ def main():
                                  config.test_data_name)
     
     #---------- init dataloaders
-    train_dataloader, val_dataloader, test_dataloader = dataloaders.get_dataloaders_all(config, split_dict)
+    train_dataloader, val_dataloader, _ = dataloaders.get_dataloaders_all(config, split_dict)
     
     #---------- TRAIN MODEL
-    if config.only_unets_flag == True:
-        print("INFO: Train-v1 started")
-        log = train.train_v1(model,
-                             optimizer,
-                             criterion,
-                             n_epochs,
-                             device,
-                             config,
-                             train_dataloader, 
-                             val_dataloader,
-                             test_dataloader, 
-                             experiment_name)
-    elif config.only_unets_flag == False:
-        print("INFO: Train-v2 started")
-        log = train.train_v2(model,
-                             optimizer,
-                             criterion,
-                             n_epochs,
-                             device,
-                             config,
-                             train_dataloader, 
-                             val_dataloader,
-                             test_dataloader, 
-                             experiment_name)
+    if config.use_patches == True:
+        if config.which_net == 'combnet_v3':
+            print("INFO: Train-v4 started")
+            log = train.train_v4(model,
+                                optimizer,
+                                criterion,
+                                n_epochs,
+                                device,
+                                config,
+                                train_dataloader, 
+                                val_dataloader)
+            
+        elif config.only_unets_flag == True:
+            print("INFO: Train-v1 started")
+            log = train.train_v1(model,
+                                optimizer,
+                                criterion,
+                                n_epochs,
+                                device,
+                                config,
+                                train_dataloader, 
+                                val_dataloader)
         
+        elif config.only_unets_flag == False:
+            print("INFO: Train-v2 started")
+            log = train.train_v2(model,
+                                optimizer,
+                                criterion,
+                                n_epochs,
+                                device,
+                                config,
+                                train_dataloader, 
+                                val_dataloader)
+    elif config.use_patches == False:
+        print("INFO: train-v3 started")
+        log = train.train_v3(model,
+                             optimizer,
+                             criterion,
+                             n_epochs,
+                             device,
+                             config,
+                             train_dataloader, 
+                             val_dataloader)
+    
     # print messages save logs and plot some figs
     log.save_config()
     log.save_logs()

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from models import model_utils as mu
+from torch_geometric.nn.inits import reset
 from torch_geometric.nn import GCNConv, TopKPooling
 from torch_geometric.typing import OptTensor, PairTensor
 from torch_geometric.nn.resolver import activation_resolver
@@ -439,6 +440,118 @@ class GraphUNet(nn.Module):
         
         return x, edge_index
 
+class GAE_Encoder(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, depth=2, act='relu'):
+        super().__init__()
+        assert depth>=1, f'Initializing GAE encoder, the depth parameter {depth} is invalid'
+        self.in_channels     = in_channels
+        self.hidden_channels = hidden_channels
+        self.out_channels    = out_channels
+        self.depth           = depth
+        self.act             = act_layer(act)
+
+        self.enc_convs = nn.ModuleList()
+        self.enc_convs.append(GCNConv(in_channels, hidden_channels, improved=False, add_self_loops=True))
+        for i in range(1, depth-1):
+            self.enc_convs.append(GCNConv(hidden_channels, hidden_channels, improved=False, add_self_loops=True))
+        self.enc_convs.append(GCNConv(hidden_channels, out_channels, improved=False, add_self_loops=True))
+    
+    def reset_parameters(self):
+        '''
+        Reset all learnable parameters of the module
+        '''
+        for conv in self.enc_convs:
+            conv.reset_parameters()
+    
+    def forward(self, x, edge_index):
+        
+        edge_weight = x.new_ones(edge_index.size(1))
+        
+        for i in range(self.depth):
+            x = self.act(self.enc_convs[i](x, edge_index, edge_weight))
+        x = self.enc_convs[-1](x, edge_index, edge_weight)
+        
+        return x
+    
+class InnerProductDecoder(nn.Module):
+    '''
+    The inner product decoder from the "Variational Graph Auto-Encoders" paper
+    <https://arxiv.org/abs/1611.07308>.
+
+    The current implementation was adopted from the pytorch geometric
+    library <https://pytorch-geometric.readthedocs.io>.
+    '''
+    def forward(self, z, edge_index, sigmoid=True):
+        '''
+        Decodes the latent variables `z` into edge probabilities for
+        the given node-pairs `edge_index`
+
+        Parameters
+        ----------
+        z (torch.Tensor): The latent space
+        sigmoid (bool)  : If set to `False`, does not apply the logistic sigmoid function to the output.
+        
+        Return
+        ----------
+        value: updated edje_index matrix
+        '''
+        value = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
+        return torch.sigmoid(value) if sigmoid else value
+    
+    def forward_all(self, z, sigmoid):
+        '''
+        Decodes the latent variables `z` into a probabilistic dense
+        adjacency matrix. Here all the edges are taken into account.
+        In our application this is not necessary.
+
+         Parameters
+        ----------
+        z (torch.Tensor): The latent space
+        sigmoid (bool)  : If set to `False`, does not apply the logistic sigmoid function to the output.
+        
+        Return
+        ----------
+        adj: updated dense adjacaency matrix
+        '''
+        adj = torch.matmul(z, z.t())
+        return torch.sigmoid(adj) if sigmoid else adj
+
+class GAE_Decoder(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, depth=2, act='relu'):
+        super().__init__()
+        assert depth>=1, f'Initializing GAE decoder, the depth parameter {depth} is invalid'
+        self.in_channels     = in_channels
+        self.hidden_channels = hidden_channels
+        self.out_channels    = out_channels
+        self.depth           = depth
+        self.act             = act_layer(act)
+
+        self.innerproducetdecoder = InnerProductDecoder()
+        self.dec_convs            = nn.ModuleList()
+        self.dec_convs.append(GCNConv(in_channels, hidden_channels, improved=False, add_self_loops=True))
+        for i in range(1, depth-1):
+            self.dec_convs.append(GCNConv(hidden_channels, hidden_channels, improved=False, add_self_loops=True))
+        self.dec_convs.append(GCNConv(hidden_channels, out_channels, improved=False, add_self_loops=True))
+    
+    def reset_parameters(self):
+        '''
+        Reset all learnable parameters of the module
+        '''
+        reset(self.innerproducetdecoder)
+        
+        for conv in self.dec_convs:
+            conv.reset_parameters()
+    
+    def forward(self, x, edge_index):
+
+        edge_weight = self.innerproducetdecoder.forward(x, edge_index)
+
+        for i in range(self.depth):
+            x = self.act(self.dec_convs[i](x, edge_index, edge_weight))
+        x = self.dec_convs[-1](x, edge_index, edge_weight)
+
+        return x, edge_index, edge_weight
+
 # no skip connections
 class CombNet_v1(nn.Module):
     def __init__(self, 
@@ -523,7 +636,7 @@ class CombNet_v1(nn.Module):
         outputs = outputs.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
         return outputs,  adj_mtx_g
     
-# no skip connections
+# skip connections
 class CombNet_v2(nn.Module):
     def __init__(self, 
                  activation_func_unet, 
@@ -618,3 +731,108 @@ class CombNet_v2(nn.Module):
         outputs = torch.cat(outputs, dim = 0)
         outputs = outputs.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
         return outputs,  adj_mtx_g
+
+class CombNet_v3(nn.Module):
+    def __init__(self, 
+                 activation_func_unet, 
+                 activation_func_graph, 
+                 in_channels_unet,
+                 hidden_channels_graph,
+                 depth_graph       = 2, 
+                 out_channels_unet = 1, 
+                 exp_type          = ''):
+        
+        super().__init__()
+        
+        self.encoder      = UNetEncoder(activation_func_unet, 
+                                        in_channels_unet)
+        
+        in_channels_graph = 16*4*4*2 # the flatten image that the encoder produces
+        self.gae_encoder = GAE_Encoder(in_channels_graph, 
+                                       hidden_channels_graph, 
+                                       hidden_channels_graph, 
+                                       depth_graph, 
+                                       activation_func_graph)
+        
+        self.gae_decoder = GAE_Decoder(hidden_channels_graph, 
+                                       in_channels_graph, 
+                                       in_channels_graph, 
+                                       depth_graph, 
+                                       activation_func_graph)
+
+        self.decoder = UNetDecoder(activation_func_unet, 
+                                   in_channels_unet, 
+                                   out_channels_unet, 
+                                   exp_type)
+        
+    def forward(self, node_fts, adj_mtx):
+        
+        batch_shape = node_fts.shape
+        node_fts    = node_fts.view(batch_shape[0]*batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
+        
+        # pass all the patches through the unet encoder
+        x1          = []
+        x2          = []
+        x3          = []
+        x4          = []
+        minibatch   = 256
+        idx         = 0
+        while True:
+            index_start = idx * minibatch
+            index_end   = (idx + 1) * minibatch
+            idx        += 1
+            if index_start >= node_fts.shape[0]: break
+            if index_end > node_fts.shape[0]:   index_end = node_fts.shape[0]
+            px1, px2, px3, px4 = self.encoder(node_fts[index_start:index_end, :, :, :, :])
+            x1.append(px1)
+            x2.append(px2)
+            x3.append(px3)
+            x4.append(px4)
+        x1 = torch.cat(x1, dim = 0)
+        x2 = torch.cat(x2, dim = 0)
+        x3 = torch.cat(x3, dim = 0)
+        x4 = torch.cat(x4, dim = 0)
+
+        x4 = x4.view(batch_shape[0], batch_shape[1], x4.shape[1], x4.shape[2], x4.shape[3], x4.shape[4])
+        encoder_shape = x4.shape
+
+        # flatten the patches into 1 vector
+        x4 = x4.view(x4.shape[0], x4.shape[1], -1)
+        
+        # pass the graphs through the graph autoencoder
+        batch_preds_g = []
+        adj_mtx_g     = []
+        adj_weights_g = []
+        # pass through the graph autoencoder one graph at a time
+        for image in range(batch_shape[0]):
+            fts                   = self.gae_encoder(x4[image], adj_mtx[image])
+            fts, adj, adj_weights = self.gae_decoder(fts, adj_mtx[image])
+            batch_preds_g.append(fts)
+            adj_mtx_g.append(adj)
+            adj_weights_g.append(adj_weights)
+
+        batch_preds_g = torch.stack(batch_preds_g)
+        adj_mtx_g     = torch.stack(adj_mtx_g)
+        adj_weights_g = torch.stack(adj_weights_g)
+
+        #unflatten the patches
+        batch_preds_g = batch_preds_g.view(encoder_shape[0]*encoder_shape[1], encoder_shape[2], encoder_shape[3], encoder_shape[4], encoder_shape[5])
+        
+        # pass all the patches through the unet decoder
+        outputs     = []
+        idx         = 0
+        while True:
+            index_start = idx * minibatch
+            index_end   = (idx + 1) * minibatch
+            idx        += 1
+            if index_start >= batch_preds_g.shape[0]: break
+            if index_end > batch_preds_g.shape[0]:   index_end = batch_preds_g.shape[0]
+            preds = self.decoder(x1[index_start:index_end, :, :, :, :],
+                                 x2[index_start:index_end, :, :, :, :],
+                                 x3[index_start:index_end, :, :, :, :],
+                                 batch_preds_g[index_start:index_end, :, :, :, :])
+            outputs.append(preds)
+        outputs = torch.cat(outputs, dim = 0)
+        outputs = outputs.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
+        return outputs,  adj_mtx_g, adj_weights_g
+        

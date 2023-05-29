@@ -42,19 +42,32 @@ def get_dataloader_single(type_of_loader,
                           shuffle, 
                           num_workers,
                           config):
-    # get transforms
+    # get transforms and dataset class
     if type_of_loader == 'train':
-        transform = get_transform_train(config)
-        dataset   = datasets.UIAGraph_Dataset(path_data, data, transform, config)
-    
+        if config.use_patches == True:
+            # dataloaders for graph networks
+            transform = get_transform_train(config)
+            dataset   = datasets.UIAGraph_Dataset(path_data, data, transform, config)
+        elif config.use_patches == False:
+            # dataloaders for unet network
+            transform = get_transform_train_v2(config)
+            dataset = datasets.UIA_Dataset(path_data, data, transform, config)
+
     elif type_of_loader == 'validation':
-        transform = get_transform_valid(config)
-        dataset   = datasets.UIAGraph_Dataset(path_data, data, transform, config)
+        if config.use_patches == True:
+            transform = get_transform_valid(config)
+            dataset   = datasets.UIAGraph_Dataset(path_data, data, transform, config)
+        elif config.use_patches == False:
+            transform = get_transform_valid(config)
+            dataset = datasets.UIA_Dataset(path_data, data, transform, config)
     
     elif type_of_loader == 'test':
-        transform = get_transform_test(config)
-        dataset   = datasets.UIAGraph_Dataset(path_data, data, transform, config)
-        
+        if config.use_patches == True:
+            transform = get_transform_test(config)
+            dataset   = datasets.UIAGraph_Dataset(path_data, data, transform, config)
+        elif config.use_patches == False:
+            transform = get_transform_test(config)
+            dataset   = datasets.UIA_Dataset(path_data, data, transform, config)
     else:
         print("Error: Wrong type of loader in get_loaders_single")
         raise NameError
@@ -71,6 +84,7 @@ def get_dataloader_single(type_of_loader,
 
 
 #---------- helper functions
+# TODO add random elastic?!
 def get_transform_train(config):
     transform_label  = get_label_transform(config.experiment_type)
     transforms_train = ComposeTransforms([ToTensor(),
@@ -78,9 +92,14 @@ def get_transform_train(config):
                                           #RandomRotate_90_180_270(config.transforms_probability),
                                           RandomAffine(config.transforms_probability),
                                           transform_label])
-    
-    
-    #transforms_train = ComposeTransforms([ToTensor(), transform_label])
+    return transforms_train
+
+def get_transform_train_v2(config):
+    transform_label  = get_label_transform(config.experiment_type)
+    transforms_train = ComposeTransforms([ToTensor(),
+                                          RandomFlip(config.transforms_probability),
+                                          RandomAffine(config.transforms_probability),
+                                          transform_label])
     return transforms_train
 
 def get_transform_valid(config):
