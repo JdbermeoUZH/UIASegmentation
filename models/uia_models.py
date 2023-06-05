@@ -5,6 +5,7 @@ from models import model_utils as mu
 from torch_geometric.nn.inits import reset
 from torch_geometric.nn import GCNConv, TopKPooling
 from torch_geometric.typing import OptTensor, PairTensor
+from torch_geometric.nn.norm.batch_norm import BatchNorm
 from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.utils import add_self_loops, remove_self_loops, to_torch_csr_tensor
 
@@ -16,6 +17,8 @@ def act_layer(activation_func, inplace=True, neg_slope =0.2, nprelu=1):
         layer = nn.LeakyReLU(neg_slope, inplace)
     elif activation_func == 'prelu':
         layer = nn.PReLU(num_parameters=nprelu, init=neg_slope)
+    elif activation_func == 'tanh':
+        layer = nn.Tanh()
     elif activation_func == 'sigmoid':
         layer = nn.Sigmoid()
     elif activation_func == 'softmax':
@@ -47,6 +50,7 @@ class DoubleConv(nn.Module):
     def forward(self, x):
         return self.double_conv(x)
 
+'''
 class SingleConv(nn.Module):
     def __init__(self, in_channels, out_channels, activation_func1 = ''):
         super().__init__()
@@ -63,6 +67,24 @@ class SingleConv(nn.Module):
     
     def forward(self, x):
         return self.single_conv(x)
+'''
+class SingleConv(nn.Module):
+    def __init__(self, in_channels, out_channels, activation_func1 = ''):
+        super().__init__()
+        if activation_func1 == '':
+            self.activation1 = None
+            self.single_conv = nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+            
+        else:
+            self.activation1 = act_layer(activation_func1)
+            self.single_conv = nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+    
+    def forward(self, x):
+        x = self.single_conv(x)
+        #assert torch.isnan(x).any() == False, f'Inside single conv got nan'
+        #assert torch.isinf(x).any() == False, f'Inside single conv got inf'
+        #assert (x == 0).all()       == False, f'Inside single conv got all 0'
+        return self.activation1(x)
     
 class Down(nn.Module):
     def __init__(self, in_channels, out_channels, activation_func1='relu', activation_func2='', mid_channels = None):
@@ -338,18 +360,25 @@ class GraphUNet(nn.Module):
 
         #---------- ENCODER
         self.down_convs = nn.ModuleList()
+        #self.down_bns   = nn.ModuleList()
         self.pools      = nn.ModuleList()
         self.down_convs.append(GCNConv(in_channels, hidden_channels, improved=True))
+        #self.down_bns.append(BatchNorm(hidden_channels))
         for i in range(depth):
             self.pools.append(TopKPooling(hidden_channels, self.pool_ratios[i]))
             self.down_convs.append(GCNConv(hidden_channels, hidden_channels, improved=True))
+            #self.down_bns.append(BatchNorm(hidden_channels))
         
         #---------- DECODER
         in_channels2 = hidden_channels if sum_res else 2*hidden_channels
         self.up_convs = torch.nn.ModuleList()
+        #self.up_bns   = torch.nn.ModuleList()
         for i in range(depth-1):
             self.up_convs.append(GCNConv(in_channels2, hidden_channels, improved=True))
+            #self.up_bns.append(BatchNorm(hidden_channels))
         self.up_convs.append(GCNConv(in_channels2, out_channels, improved=True))
+        #self.up_bns.append(BatchNorm(out_channels))
+
         self.reset_parameters()
     
     def reset_parameters(self):
@@ -358,10 +387,14 @@ class GraphUNet(nn.Module):
         '''
         for conv in self.down_convs:
             conv.reset_parameters()
+        #for bn in self.down_bns:
+        #    bn.reset_parameters()
         for pool in self.pools:
             pool.reset_parameters()
         for conv in self.up_convs: 
             conv.reset_parameters()
+        #for bn in self.up_bns:
+        #    bn.reset_parameters()
 
     def __repr__(self):
         return (f'{self.__class__.__name__}({self.in_channels}, '
@@ -400,6 +433,7 @@ class GraphUNet(nn.Module):
         edge_weight = x.new_ones(edge_index.size(1))
 
         #---------- ENCODING
+        #x = self.down_bns[0](self.down_convs[0](x, edge_index, edge_weight))
         x = self.down_convs[0](x, edge_index, edge_weight)
         x = self.act(x)
 
@@ -413,6 +447,7 @@ class GraphUNet(nn.Module):
             edge_index, edge_weight = self.augment_adj(edge_index, edge_weight, x.size(0))
             x, edge_index, edge_weight, batch, perm, _ = self.pools[i-1](x, edge_index, edge_weight, batch)
 
+            #x = self.down_bns[i](self.down_convs[i](x, edge_index, edge_weight))
             x = self.down_convs[i](x, edge_index, edge_weight)
             x = self.act(x)
 
@@ -435,6 +470,7 @@ class GraphUNet(nn.Module):
             up[perm]    = x
             x           = res + up if self.sum_res else torch.cat((res, up), dim=-1)
 
+            #x           = self.up_bns[i](self.up_convs[i](x, edge_index, edge_weight))
             x           = self.up_convs[i](x, edge_index, edge_weight)
             x           = self.act(x) if i < self.depth-1 else x
         
@@ -467,7 +503,7 @@ class GAE_Encoder(nn.Module):
         
         edge_weight = x.new_ones(edge_index.size(1))
         
-        for i in range(self.depth):
+        for i in range(self.depth-1):
             x = self.act(self.enc_convs[i](x, edge_index, edge_weight))
         x = self.enc_convs[-1](x, edge_index, edge_weight)
         
@@ -498,11 +534,10 @@ class InnerProductDecoder(nn.Module):
         value = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
         return torch.sigmoid(value) if sigmoid else value
     
-    def forward_all(self, z, sigmoid):
+    def forward_all(self, z, sigmoid=True):
         '''
         Decodes the latent variables `z` into a probabilistic dense
         adjacency matrix. Here all the edges are taken into account.
-        In our application this is not necessary.
 
          Parameters
         ----------
@@ -513,13 +548,16 @@ class InnerProductDecoder(nn.Module):
         ----------
         adj: updated dense adjacaency matrix
         '''
-        adj = torch.matmul(z, z.t())
-        return torch.sigmoid(adj) if sigmoid else adj
+        adj         = torch.matmul(z, z.t())
+        adj         = torch.sigmoid(adj) if sigmoid else adj
+        adj         = adj.to_sparse_coo()
+        edge_index  = adj.indices()
+        edge_weight = adj.values() 
+        return edge_index, edge_weight
 
 class GAE_Decoder(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, depth=2, act='relu'):
         super().__init__()
-        assert depth>=1, f'Initializing GAE decoder, the depth parameter {depth} is invalid'
         self.in_channels     = in_channels
         self.hidden_channels = hidden_channels
         self.out_channels    = out_channels
@@ -527,28 +565,31 @@ class GAE_Decoder(nn.Module):
         self.act             = act_layer(act)
 
         self.innerproducetdecoder = InnerProductDecoder()
-        self.dec_convs            = nn.ModuleList()
-        self.dec_convs.append(GCNConv(in_channels, hidden_channels, improved=False, add_self_loops=True))
-        for i in range(1, depth-1):
-            self.dec_convs.append(GCNConv(hidden_channels, hidden_channels, improved=False, add_self_loops=True))
-        self.dec_convs.append(GCNConv(hidden_channels, out_channels, improved=False, add_self_loops=True))
+        
+        if self.depth>0:
+            self.dec_convs            = nn.ModuleList()
+            self.dec_convs.append(GCNConv(in_channels, hidden_channels, improved=False, add_self_loops=True))
+            for i in range(1, depth-1):
+                self.dec_convs.append(GCNConv(hidden_channels, hidden_channels, improved=False, add_self_loops=True))
+            self.dec_convs.append(GCNConv(hidden_channels, out_channels, improved=False, add_self_loops=True))
     
     def reset_parameters(self):
         '''
         Reset all learnable parameters of the module
         '''
         reset(self.innerproducetdecoder)
-        
-        for conv in self.dec_convs:
-            conv.reset_parameters()
+        if self.depth > 0:
+            for conv in self.dec_convs:
+                conv.reset_parameters()
     
     def forward(self, x, edge_index):
 
         edge_weight = self.innerproducetdecoder.forward(x, edge_index)
-
-        for i in range(self.depth):
-            x = self.act(self.dec_convs[i](x, edge_index, edge_weight))
-        x = self.dec_convs[-1](x, edge_index, edge_weight)
+        
+        if self.depth > 0:
+            for i in range(self.depth-1):
+                x = self.act(self.dec_convs[i](x, edge_index, edge_weight))
+            x = self.dec_convs[-1](x, edge_index, edge_weight)
 
         return x, edge_index, edge_weight
 
@@ -700,6 +741,23 @@ class CombNet_v2(nn.Module):
         # flatten the patches into 1 vector
         x4 = x4.view(x4.shape[0], x4.shape[1], -1)
         
+        # -- only for debug
+        #assert torch.isnan(x1).any() == False, f'Inside forward x1 gunet got nan'
+        #assert torch.isnan(x2).any() == False, f'Inside forward x2 gunet got nan'
+        #assert torch.isnan(x3).any() == False, f'Inside forward x3 gunet got nan'
+        #assert torch.isnan(x4).any() == False, f'Inside forward x4 gunet got nan'
+        
+        #assert torch.isinf(x1).any() == False, f'Inside forward x1 gunet got inf'
+        #assert torch.isinf(x2).any() == False, f'Inside forward x2 gunet got inf'
+        #assert torch.isinf(x3).any() == False, f'Inside forward x3 gunet got inf'
+        #assert torch.isinf(x4).any() == False, f'Inside forward x4 gunet got inf'
+        
+        #assert (x1 == 0).all()       == False, f'Inside forward x1 gunet got only zeros'
+        #assert (x2 == 0).all()       == False, f'Inside forward x2 gunet got only zeros'
+        #assert (x3 == 0).all()       == False, f'Inside forward x3 gunet got only zeros'
+        #assert (x4 == 0).all()       == False, f'Inside forward x4 gunet got only zeros'
+        # only for debug ---
+
         # pass the graphs through the graph unet
         batch_preds_g = []
         adj_mtx_g     = []
@@ -714,6 +772,12 @@ class CombNet_v2(nn.Module):
         #unflatten the patches
         batch_preds_g = batch_preds_g.view(encoder_shape[0]*encoder_shape[1], encoder_shape[2], encoder_shape[3], encoder_shape[4], encoder_shape[5])
         
+        # -- only for debug
+        #assert torch.isnan(batch_preds_g).any() == False, f'Inside forward batch_preds_g gunet got nan'
+        #assert torch.isinf(batch_preds_g).any() == False, f'Inside forward batch_preds_g gunet got inf'
+        #assert (batch_preds_g == 0).all()       == False, f'Inside forward batch_preds_g gunet got only zeros'
+        # only for debug ---
+
         # pass all the patches through the unet decoder
         outputs     = []
         idx         = 0
@@ -730,6 +794,13 @@ class CombNet_v2(nn.Module):
             outputs.append(preds)
         outputs = torch.cat(outputs, dim = 0)
         outputs = outputs.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
+
+        # -- only for debug
+        #assert torch.isnan(outputs).any() == False, f'Inside forward outputs gunet got nan'
+        #assert torch.isinf(outputs).any() == False, f'Inside forward outputs gunet got inf'
+        #assert (outputs == 0).all()       == False, f'Inside forward outputs gunet got only zeros'
+        # only for debug ---
+
         return outputs,  adj_mtx_g
 
 class CombNet_v3(nn.Module):
@@ -738,7 +809,8 @@ class CombNet_v3(nn.Module):
                  activation_func_graph, 
                  in_channels_unet,
                  hidden_channels_graph,
-                 depth_graph       = 2, 
+                 depth_graph_enc   = 2, 
+                 depth_graph_dec   = 2,
                  out_channels_unet = 1, 
                  exp_type          = ''):
         
@@ -748,17 +820,31 @@ class CombNet_v3(nn.Module):
                                         in_channels_unet)
         
         in_channels_graph = 16*4*4*2 # the flatten image that the encoder produces
-        self.gae_encoder = GAE_Encoder(in_channels_graph, 
-                                       hidden_channels_graph, 
-                                       hidden_channels_graph, 
-                                       depth_graph, 
-                                       activation_func_graph)
+
+        if depth_graph_dec == 0:
+            self.gae_encoder = GAE_Encoder(in_channels_graph, 
+                                           hidden_channels_graph, 
+                                           in_channels_graph, 
+                                           depth_graph_enc, 
+                                           activation_func_graph)
+            
+            self.gae_decoder = GAE_Decoder(in_channels_graph, 
+                                            in_channels_graph, 
+                                            in_channels_graph, 
+                                            depth_graph_dec, 
+                                            activation_func_graph)
+        else:
+            self.gae_encoder = GAE_Encoder(in_channels_graph, 
+                                           hidden_channels_graph, 
+                                           hidden_channels_graph, 
+                                           depth_graph_enc, 
+                                           activation_func_graph)
         
-        self.gae_decoder = GAE_Decoder(hidden_channels_graph, 
-                                       in_channels_graph, 
-                                       in_channels_graph, 
-                                       depth_graph, 
-                                       activation_func_graph)
+            self.gae_decoder = GAE_Decoder(hidden_channels_graph, 
+                                            in_channels_graph, 
+                                            in_channels_graph, 
+                                            depth_graph_dec, 
+                                            activation_func_graph)
 
         self.decoder = UNetDecoder(activation_func_unet, 
                                    in_channels_unet, 
@@ -835,4 +921,175 @@ class CombNet_v3(nn.Module):
         outputs = torch.cat(outputs, dim = 0)
         outputs = outputs.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
         return outputs,  adj_mtx_g, adj_weights_g
+
+class CombNet_v4(nn.Module):
+    def __init__(self, 
+                 activation_func_unet, 
+                 activation_func_graph, 
+                 in_channels_unet,
+                 hidden_channels_graph,
+                 depth_graph_enc   = 2, 
+                 out_channels_unet = 1, 
+                 exp_type          = ''):
         
+        super().__init__()
+        
+        self.encoder      = UNetEncoder(activation_func_unet, 
+                                        in_channels_unet)
+        
+        in_channels_graph = 16*4*4*2 # the flatten image that the encoder produces
+        self.gae_encoder = GAE_Encoder(in_channels_graph, 
+                                       hidden_channels_graph, 
+                                       in_channels_graph, 
+                                       depth_graph_enc, 
+                                       activation_func_graph)
+        
+        self.gae_decoder = InnerProductDecoder()
+
+        self.decoder     = UNetDecoder(activation_func_unet, 
+                                       in_channels_unet, 
+                                       out_channels_unet, 
+                                       exp_type)
+        
+    def forward(self, node_fts, adj_mtx):
+        
+        batch_shape = node_fts.shape
+        node_fts    = node_fts.view(batch_shape[0]*batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
+        
+        # pass all the patches through the unet encoder
+        x1          = []
+        x2          = []
+        x3          = []
+        x4          = []
+        minibatch   = 256
+        idx         = 0
+        while True:
+            index_start = idx * minibatch
+            index_end   = (idx + 1) * minibatch
+            idx        += 1
+            if index_start >= node_fts.shape[0]: break
+            if index_end > node_fts.shape[0]:   index_end = node_fts.shape[0]
+            px1, px2, px3, px4 = self.encoder(node_fts[index_start:index_end, :, :, :, :])
+            x1.append(px1)
+            x2.append(px2)
+            x3.append(px3)
+            x4.append(px4)
+        x1 = torch.cat(x1, dim = 0)
+        x2 = torch.cat(x2, dim = 0)
+        x3 = torch.cat(x3, dim = 0)
+        x4 = torch.cat(x4, dim = 0)
+
+        x4 = x4.view(batch_shape[0], batch_shape[1], x4.shape[1], x4.shape[2], x4.shape[3], x4.shape[4])
+        encoder_shape = x4.shape
+
+        # flatten the patches into 1 vector
+        x4 = x4.view(x4.shape[0], x4.shape[1], -1)
+        
+        # pass the graphs through the graph autoencoder
+        batch_preds_g = []
+        adj_mtx_g     = []
+        adj_weights_g = []
+        # pass through the graph autoencoder one graph at a time
+        for image in range(batch_shape[0]):
+            fts              = self.gae_encoder(x4[image], adj_mtx[image])
+            adj, adj_weights = self.gae_decoder.forward_all(fts)
+            batch_preds_g.append(fts)
+            adj_mtx_g.append(adj)
+            adj_weights_g.append(adj_weights)
+
+        batch_preds_g = torch.stack(batch_preds_g)
+        adj_mtx_g     = torch.stack(adj_mtx_g)
+        adj_weights_g = torch.stack(adj_weights_g)
+
+        #unflatten the patches
+        batch_preds_g = batch_preds_g.view(encoder_shape[0]*encoder_shape[1], encoder_shape[2], encoder_shape[3], encoder_shape[4], encoder_shape[5])
+        
+        # pass all the patches through the unet decoder
+        outputs     = []
+        idx         = 0
+        while True:
+            index_start = idx * minibatch
+            index_end   = (idx + 1) * minibatch
+            idx        += 1
+            if index_start >= batch_preds_g.shape[0]: break
+            if index_end > batch_preds_g.shape[0]:   index_end = batch_preds_g.shape[0]
+            preds = self.decoder(x1[index_start:index_end, :, :, :, :],
+                                 x2[index_start:index_end, :, :, :, :],
+                                 x3[index_start:index_end, :, :, :, :],
+                                 batch_preds_g[index_start:index_end, :, :, :, :])
+            outputs.append(preds)
+        outputs = torch.cat(outputs, dim = 0)
+        outputs = outputs.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
+        return outputs,  adj_mtx_g, adj_weights_g
+
+class CombNet_v5(nn.Module):
+    def __init__(self, 
+                 activation_func_unet, 
+                 activation_func_graph, 
+                 in_channels_unet,
+                 hidden_channels_graph,
+                 depth_graph_enc   = 2, 
+                 depth_graph_dec   = 0,
+                 out_channels_unet = 1, 
+                 exp_type          = ''):
+        
+        super().__init__()
+        
+        self.encoder      = UNetEncoder(activation_func_unet, 
+                                           in_channels_unet)
+        
+        in_channels_graph = 16 * 4 * 4 * 2# the flatten image that the encoder produces
+        self.gae_encoder  = GAE_Encoder(in_channels_graph, 
+                                        hidden_channels_graph, 
+                                        in_channels_graph, 
+                                        depth_graph_enc, 
+                                        activation_func_graph)
+        
+        self.gae_decoder = InnerProductDecoder()
+        '''
+        self.gae_decoder = GAE_Decoder(hidden_channels_graph, 
+                                       in_channels_graph, 
+                                       in_channels_graph, 
+                                       depth_graph_dec, 
+                                       activation_func_graph)
+        '''
+
+        self.decoder = UNetDecoder(activation_func_unet, 
+                                   in_channels_unet, 
+                                   out_channels_unet, 
+                                   exp_type)
+        
+    def forward(self, image, adj_mtx):
+        x1, x2, x3, x4 = self.encoder(image)
+
+        # --- patch the final image, and keep the correspondance to the adjacency matrix
+        s1 = x4.size()
+        x4 = x4.unfold(2, 4, 4).unfold(3, 4, 4).unfold(4, 2, 2).permute(0,4,3,2,1,5,6,7)
+        s2 = x4.size()
+        x4 = x4.reshape(x4.shape[0], x4.shape[1], x4.shape[2], x4.shape[3], -1)
+        s3 = x4.size()
+        x4 = x4.reshape(x4.shape[0], -1, x4.shape[-1])
+
+        batch_preds_g = []
+        adj_mtx_g     = []
+        adj_weights_g = []
+        # pass through the graph autoencoder one graph at a time
+        for image in range(x4.shape[0]):
+            fts              = self.gae_encoder(x4[image], adj_mtx[image])
+            adj, adj_weights = self.gae_decoder.forward_all(fts)
+            batch_preds_g.append(fts)
+            adj_mtx_g.append(adj)
+            adj_weights_g.append(adj_weights)
+        batch_preds_g = torch.stack(batch_preds_g)
+        adj_mtx_g     = torch.stack(adj_mtx_g)
+        adj_weights_g = torch.stack(adj_weights_g)
+        
+        # --- undo the patching after the graph autoencoder to pass the result through the unet decoder
+        # step 1: restore the patches dimensions in the 3D space 
+        batch_preds_g = batch_preds_g.reshape(s3)
+        # step 2: unflatten the patches and move the channels to the correct dimension
+        # step 3: undo the unfolding
+        batch_preds_g = batch_preds_g.reshape(s2).permute(0,4,3,5,2,6,1,7).reshape(s1).contiguous()
+
+        outputs = self.decoder(x1, x2, x3, batch_preds_g)
+        return outputs, adj_mtx_g, adj_weights_g

@@ -71,7 +71,29 @@ def get_model(which_model, config):
                                   activation_func_graph = config.activation_function_g,
                                   in_channels_unet      = 1,
                                   hidden_channels_graph = config.hidden_channels_g,
-                                  depth_graph           = config.depth_g,
+                                  depth_graph_enc       = config.depth_g_enc,
+                                  depth_graph_dec       = config.depth_g_dec,
+                                  out_channels_unet     = config.output_channels,
+                                  exp_type              = config.experiment_type
+                                  )
+        return model
+    elif which_model == 'combnet_v4':
+        model = models.CombNet_v4(activation_func_unet  = config.activation_function,
+                                  activation_func_graph = config.activation_function_g,
+                                  in_channels_unet      = 1,
+                                  hidden_channels_graph = config.hidden_channels_g,
+                                  depth_graph_enc       = config.depth_g_enc,
+                                  out_channels_unet     = config.output_channels,
+                                  exp_type              = config.experiment_type
+                                  )
+        return model
+    elif which_model == 'combnet_v5':
+        model = models.CombNet_v5(activation_func_unet  = config.activation_function,
+                                  activation_func_graph = config.activation_function_g,
+                                  in_channels_unet      = 1,
+                                  hidden_channels_graph = config.hidden_channels_g,
+                                  depth_graph_enc       = config.depth_g_enc,
+                                  depth_graph_dec       = config.depth_g_dec,
                                   out_channels_unet     = config.output_channels,
                                   exp_type              = config.experiment_type
                                   )
@@ -139,7 +161,7 @@ def get_evaluation_metrics():
     return metrics
 
 #---------- LOSSES
-def dice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean'):
+def dice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean', debug_mode = False):
     
     # TODO: check if .contiguous is unnecesary.
     pflat        = batch_preds.float().contiguous().view(batch_preds.shape[0], -1)
@@ -149,6 +171,22 @@ def dice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean'):
     denom        = torch.sum(pflat, dim=1) + torch.sum(tflat, dim = 1) + smooth
     dice_losses  = 1 - nom/denom
     
+    #--- only for debug
+    if debug_mode == True:
+        
+        assert torch.isnan(pflat).any() == False, f'Inside loss pflat has nan'
+        assert torch.isnan(tflat).any() == False, f'Inside loss tflat has nan'
+
+        assert (pflat == 0).all() == False, f'Inside loss pflat has only 0'
+        assert (tflat == 0).all() == False, f'Inside loss tflat has only 0'
+
+        assert torch.isinf(pflat).any() == False, f'Inside loss pflat has inf'
+        assert torch.isinf(pflat).any() == False, f'Inside loss pflat has inf'
+
+        #assert torch.max(pflat) <= 1 and torch.max(pflat) > 0, f'Inside loss pmax is  {torch.max(pflat)}'
+        #assert torch.min(pflat) < 1 and torch.min(pflat) >=0, f'Inside loss pmin is {torch.min(pflat)}'
+    # only for debug --- 
+
     if reduction == 'mean':
         loss = torch.mean(dice_losses)
     elif reduction == 'sum':
@@ -165,8 +203,8 @@ def graph_loss(node_fts_preds, node_fts_gt, adj_mtx_preds, adj_mtx_weight, adj_m
         indices      = torch.cat((adj_mtx_preds[image], adj_mtx_gt[image]), dim = 1)
         init_weights = -1 * node_fts_preds.new_ones(adj_mtx_gt[image].size(1)) 
         vals         = torch.cat((adj_mtx_weight[image], init_weights))
-        inds, values = coalesce(indices, vals, num_nodes=node_fts_gt.shape[1])
-        adj_loss.append(torch.mean(values))
+        inds, values = coalesce(indices, vals, num_nodes = 3400)
+        adj_loss.append(torch.mean(torch.square(values)))
     adj_loss = torch.stack(adj_loss)
     
     # compute node features loss
@@ -206,7 +244,7 @@ class LRScheduler():
         else: self.sch.step(val_loss)
 
 class EarlyStopping():
-    def __init__(self, patience = 5, min_delta = 0):
+    def __init__(self, patience = 5, min_delta = 0.005):
         self.patience   = patience
         self.min_delta  = min_delta
         self.counter    = 0
@@ -243,7 +281,12 @@ class MSaver():
         self.check           = check
         if self.check == True:  self.current_best = None 
         
-    def __call__(self, model, dice_score):
+    def __call__(self, model, dice_score, epoch=-1):
+        
+        #--- only for debug
+        if epoch != -1:
+            self.save_model(model, self.path_to_save + '/' + self.experiment_name + '_' + str(epoch) + '.mod')
+        # only for debug ---
         
         self.counter += 1
         if self.counter > self.update_rate:
@@ -335,18 +378,31 @@ class MetricsCollector():
         plt.legend()
         plt.savefig(self.losses_fig_path)
 
-    def print_best_metrics(self):
-        for name in self.metrics.keys():
-            b_epoch      = -1
+    def print_best_metrics(self, which_metric = ''):
+        if which_metric == '':
+            for name in self.metrics.keys():
+                b_epoch      = -1
+                for epoch, epoch_dict in self.log_dict.items():
+                    if b_epoch == -1:
+                        b_epoch = epoch
+                    else:
+                        if epoch_dict[name] > self.log_dict[b_epoch][name]:
+                            b_epoch = epoch
+                print(f'for metric {name} the best epoch was {b_epoch}')
+                print(self.log_dict[b_epoch])
+        else:
+            if self.log_dict.get(which_metric) is None:
+                raise KeyError(f'MetricsCollector: The metric {which_metric} does not exists')
+            b_epoch = -1
             for epoch, epoch_dict in self.log_dict.items():
                 if b_epoch == -1:
                     b_epoch = epoch
                 else:
-                    if epoch_dict[name] > self.log_dict[b_epoch][name]:
+                    if epoch_dict[which_metric] > self.log_dict[b_epoch][which_metric]:
                         b_epoch = epoch
-            print(f'for metric {name} the best epoch was {b_epoch}')
+            print(f'for metric {which_metric} the best epoch was {b_epoch}')
             print(self.log_dict[b_epoch])
-            
+
 class MetricsClass():
     def __init__(self, metrics):
         

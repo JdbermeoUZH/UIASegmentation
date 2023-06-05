@@ -137,10 +137,13 @@ class UIA_Dataset(Dataset):
             print('Configuration is not given... Exiting from Dataset init')
             raise FileNotFoundError
         
+        self.use_gae           = config.use_gae
         self.experiment        = config.experiment_type
         self.normalization     = config.normalization
         self.norm_percent_max  = config.max_normalization_percent
         self.norm_percent_min  = config.min_normalization_percent
+        self.patch_size        = config.graph_patch_size
+        self.connectivity      = config.graph_connectivity
 
     def __len__(self):
         length = len(self.data)
@@ -180,5 +183,34 @@ class UIA_Dataset(Dataset):
         
         if self.transform != None:  
             new_item = self.transform(new_item)
+        
+        #--- additional code for gae in the whole image
+        if self.use_gae == True:
+            # compute graph's adjacency matrix based on coarse mask
+            adj_mtx    = utils.get_adjacency_matrix(new_item['mask'], 
+                                                    self.patch_size, 
+                                                    self.connectivity)
+            adj_mtx = adj_mtx.to_sparse_coo()
+            adj_mtx = adj_mtx.indices()
+
+            # compute graph's adjacency matrix based on groundtruth mask
+            segm_np = new_item['segm'].numpy()
+            if self.experiment != 'binary_class':   segm_np = np.where(segm_np > 0, 1, 0)
+            
+            segm_np1        = cc3d.connected_components(segm_np, 
+                                                        connectivity = self.connectivity)
+            segm_con_tensor = torch.from_numpy(segm_np1.astype('int16'))
+            del segm_np, segm_np1 #remove unnecessary variables
+
+            adj_mtx_gt    = utils.get_adjacency_matrix(segm_con_tensor,
+                                                    self.patch_size,
+                                                    self.connectivity)
+            
+            del segm_con_tensor #remove unnecessary variables
+            adj_mtx_gt = adj_mtx_gt.to_sparse_coo()
+            adj_mtx_gt = adj_mtx_gt.indices()
+
+            return adj_mtx, new_item['imag'].unsqueeze(0), adj_mtx_gt, new_item['segm'].unsqueeze(0)
+        #---
         
         return torch.tensor([0]), new_item['imag'].unsqueeze(0), torch.tensor([0]), new_item['segm'].unsqueeze(0)

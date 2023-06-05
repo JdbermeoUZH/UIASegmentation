@@ -221,6 +221,7 @@ def find_adjacent_nodes26(adj_mtx, m_patches, x, y, z):
                         check_corner(adj_mtx, x, y, z, x_neigh, y_neigh, z_neigh, m_patches[x,y,z,0,0,0], m_patches[x_neigh, y_neigh, z_neigh,-1,-1,-1], size)
                     else:
                         print("BUG: no category avail.... This shouldnt have happened")
+                        raise RuntimeError
 
 def find_adjacency_matrix6(adj_mtx, m_patches, patch_size):
     # naive implementation for connectivity 6...

@@ -1,4 +1,5 @@
 import torch
+import random
 import numpy as np
 import torchio as tio
 import torch.nn.functional as F
@@ -7,6 +8,11 @@ from torch.utils.data import DataLoader
 
 
 #---------- dataloaders
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
 def get_dataloaders_all(config, split_dict):
 
     train_loader = get_dataloader_single('train',
@@ -72,24 +78,27 @@ def get_dataloader_single(type_of_loader,
         print("Error: Wrong type of loader in get_loaders_single")
         raise NameError
 
-    # check if pin_memory works. Maybe need to custom made it.
+    # --only for debug
+    #g = torch.Generator()
+    #g.manual_seed(0)
+    # ---
     custom_loader = DataLoader(dataset,
                                batch_size  = batch_size,
                                shuffle     = shuffle,
                                num_workers = num_workers,
-                               pin_memory  = True
-                               )
+                               pin_memory  = True)
+                               #generator=g,
+                               #worker_init_fn=seed_worker
+                               
     
     return custom_loader
 
 
 #---------- helper functions
-# TODO add random elastic?!
 def get_transform_train(config):
     transform_label  = get_label_transform(config.experiment_type)
     transforms_train = ComposeTransforms([ToTensor(),
                                           RandomFlip(config.transforms_probability),
-                                          #RandomRotate_90_180_270(config.transforms_probability),
                                           RandomAffine(config.transforms_probability),
                                           transform_label])
     return transforms_train
@@ -302,7 +311,53 @@ class RandomAffine():
         item['segm'] = segm
 
         return item
+    
+class RandomElastic():
+    '''
+    Adopted from 
+    https://torchio.readthedocs.io/transforms/augmentation.html#randomaffine
+    '''
+    def __init__(self, prob = 0.1):
+        self.prob                = prob
+        self.num_control_points  = 7
+        self.max_displacement    = 7.5
+        self.locked_borders      = 2
+        self.image_interpolation = 'linear'
+        self.label_interpolation = 'nearest'
+        self.randelastic         = tio.RandomElasticDeformation(num_control_points  = self.num_control_points,
+                                                                max_displacement    = self.max_displacement,
+                                                                locked_borders      = self.locked_borders,
+                                                                image_interpolation = self.image_interpolation,
+                                                                label_interpolation = self.label_interpolation)
 
+    def __call__(self, item):
+        random_prob  = np.random.rand()
+        imag         = item['imag']
+        mask         = item['mask']
+        segm         = item['segm']
+
+        assert imag.ndim == mask.ndim == segm.ndim, "Inside Random Affine: dimensions mismatch"
+
+        if random_prob > 1-self.prob:
+            if imag.ndim == 3:
+                imag = imag.unsqueeze(0)
+                mask = mask.unsqueeze(0)
+                segm = segm.unsqueeze(0)
+            
+            subject = tio.Subject(image1 = tio.ScalarImage(tensor = imag),
+                                  image2 = tio.LabelMap(tensor = mask),
+                                  image3 = tio.LabelMap(tensor = segm))
+            
+            subject = self.randelastic(subject)
+            imag = subject['image1'].data.squeeze(0)
+            mask = subject['image2'].data.squeeze(0)
+            segm = subject['image3'].data.squeeze(0)
+        
+        item['imag'] = imag
+        item['mask'] = mask
+        item['segm'] = segm
+
+        return item
 
 #---------- Label Transformations
 class BinarizeSegmentation():
