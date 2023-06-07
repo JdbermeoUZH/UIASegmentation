@@ -460,6 +460,13 @@ class MetricsClass():
             msg += f'{key}: {val:.5f}, '
         msg += '\n'
         print(msg)
+    
+    # for testing
+    def get_last_item(self):
+        last_item = dict()
+        for name, metric_results in self.results.items():
+            last_item[name] = metric_results[-1]
+        return last_item
 
 def binarize_image(img, threshold = 0.5, one_hot = False):
     if img.ndim == 4:

@@ -327,7 +327,7 @@ def train_v3(model,
         #---------- update parameters
         if scheduler != None: scheduler(running_loss_val)
 
-        saver(model, eval_epoch.get_metric('dice_score'))
+        saver(model, eval_epoch.get_metric('dice_score'), tepoch)
         stop_flag = False
         if earlystopper != None:
             stop_flag = earlystopper(running_loss_val, tepoch)

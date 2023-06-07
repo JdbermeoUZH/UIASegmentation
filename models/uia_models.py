@@ -50,7 +50,7 @@ class DoubleConv(nn.Module):
     def forward(self, x):
         return self.double_conv(x)
 
-'''
+
 class SingleConv(nn.Module):
     def __init__(self, in_channels, out_channels, activation_func1 = ''):
         super().__init__()
@@ -85,7 +85,7 @@ class SingleConv(nn.Module):
         #assert torch.isinf(x).any() == False, f'Inside single conv got inf'
         #assert (x == 0).all()       == False, f'Inside single conv got all 0'
         return self.activation1(x)
-    
+'''    
 class Down(nn.Module):
     def __init__(self, in_channels, out_channels, activation_func1='relu', activation_func2='', mid_channels = None):
         super().__init__()
