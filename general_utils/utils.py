@@ -31,9 +31,22 @@ def standardization(volume):
 #---------- helper functions for graph creation
 def get_patches(volume, patch_size):
     stride  = patch_size # no overlaps
-    patches = volume.unfold(0, patch_size[0], stride[0])\
-                    .unfold(1, patch_size[1], stride[1])\
-                    .unfold(2, patch_size[2], stride[2])
+    
+    if volume.ndim == 4:
+        # channels are always in the first dimension
+        patches = volume.unfold(1, patch_size[0], stride[0])\
+                        .unfold(2, patch_size[1], stride[1])\
+                        .unfold(3, patch_size[2], stride[2])
+    
+    elif volume.ndim == 3:
+        patches = volume.unfold(0, patch_size[0], stride[0])\
+                        .unfold(1, patch_size[1], stride[1])\
+                        .unfold(2, patch_size[2], stride[2])
+    
+    else:
+        print(f'get_patches: volume has {volume.ndim} which is unsupported')
+        raise NotImplementedError
+    
     patches = patches.contiguous()
     return patches
 
@@ -41,8 +54,17 @@ def get_nodes_features(volume, patch_size):
     patches = get_patches(volume, patch_size)
     # for ease traverse first x-axis then y-axis and then z-axis
     # id of a node is x + y*n_x + z*(n_x*n_y)
-    return patches.permute(2,1,0,3,4,5)\
-                  .reshape(-1,patch_size[0],patch_size[1],patch_size[2]) 
+    if volume.ndim == 4:
+        ch      = volume.shape[0]
+        patches = patches.permute(3,2,1,0,4,5,6)
+        patches = patches.reshape(-1, ch, patch_size[0], patch_size[1], patch_size[2])
+        return patches
+    elif volume.ndim == 3:    
+        return patches.permute(2,1,0,3,4,5)\
+                      .reshape(-1,patch_size[0],patch_size[1],patch_size[2]) 
+    else:
+        print(f'get_patches: volume has {volume.ndim} which is unsupported')
+        raise NotImplementedError
 
 def find_node_id(x,y,z, patches_size):
     node_id = x + y*patches_size[0] + z*(patches_size[0]*patches_size[1])
