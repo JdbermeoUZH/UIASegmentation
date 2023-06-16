@@ -89,8 +89,11 @@ class UIAGraph_Dataset(Dataset):
                                               self.patch_size)
         
         # compute graph's adjacency matrix and node features based on groundtruth mask
-        segm_np = new_item['segm'].numpy()
-        if self.experiment != 'binary_class':   segm_np = np.where(segm_np > 0, 1, 0)
+        if self.experiment == 'three_class':
+            segm_np = new_item['segm_before_onehot'].numpy()
+            segm_np = np.where(segm_np > 0, 1, 0)
+        elif self.experiment == 'binary_class':
+            segm_np = new_item['segm'].numpy()
         
         segm_np1        = cc3d.connected_components(segm_np, 
                                                     connectivity = self.connectivity)
@@ -107,7 +110,8 @@ class UIAGraph_Dataset(Dataset):
         node_feats_gt = utils.get_nodes_features(new_item['segm'],
                                                  self.patch_size)
         node_feats    = node_feats.unsqueeze(1)
-        node_feats_gt = node_feats_gt.unsqueeze(1)
+        if self.experiment == 'binary_class':
+            node_feats_gt = node_feats_gt.unsqueeze(1)
 
         del new_item
         return adj_mtx, node_feats, adj_mtx_gt, node_feats_gt
@@ -194,8 +198,12 @@ class UIA_Dataset(Dataset):
             adj_mtx = adj_mtx.indices()
 
             # compute graph's adjacency matrix based on groundtruth mask
-            segm_np = new_item['segm'].numpy()
-            if self.experiment != 'binary_class':   segm_np = np.where(segm_np > 0, 1, 0)
+            if self.experiment == 'three_class':
+                segm_np = new_item['segm_before_onehot'].numpy()
+                segm_np = np.where(segm_np > 0, 1, 0)
+            elif self.experiment == 'binary_class':
+                segm_np = new_item['segm'].numpy()
+            
             
             segm_np1        = cc3d.connected_components(segm_np, 
                                                         connectivity = self.connectivity)
@@ -210,7 +218,11 @@ class UIA_Dataset(Dataset):
             adj_mtx_gt = adj_mtx_gt.to_sparse_coo()
             adj_mtx_gt = adj_mtx_gt.indices()
 
-            return adj_mtx, new_item['imag'].unsqueeze(0), adj_mtx_gt, new_item['segm'].unsqueeze(0)
+            if self.experiment == 'binary_class':
+                return adj_mtx, new_item['imag'].unsqueeze(0), adj_mtx_gt, new_item['segm'].unsqueeze(0)
+            return adj_mtx, new_item['imag'].unsqueeze(0), adj_mtx_gt, new_item['segm']
         #---
         
-        return torch.tensor([0]), new_item['imag'].unsqueeze(0), torch.tensor([0]), new_item['segm'].unsqueeze(0)
+        if self.experiment == 'binary_class':
+            return torch.tensor([0]), new_item['imag'].unsqueeze(0), torch.tensor([0]), new_item['segm'].unsqueeze(0)
+        return torch.tensor([0]), new_item['imag'].unsqueeze(0), torch.tensor([0]), new_item['segm']

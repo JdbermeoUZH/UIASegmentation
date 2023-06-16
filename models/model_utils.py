@@ -147,14 +147,17 @@ def get_loss(which_loss):
     '''
     if which_loss == 'dice_loss':
         return dice_loss
+    elif which_loss == 'multidice_loss':
+        return multidice_loss
     elif which_loss ==  'graph_loss':
         return graph_loss
+    elif which_loss == 'multigraph_loss':
+        return multigraph_loss
     return None
 
 def get_evaluation_metrics():
     metrics = {
         'dice_score':      DiceScore,
-        'dice_score_soft': DiceScoreSoft,
         'recall':          Recall,
         'precission':      Precision
     }
@@ -164,8 +167,8 @@ def get_evaluation_metrics():
 def dice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean', debug_mode = False):
     
     # TODO: check if .contiguous is unnecesary.
-    pflat        = batch_preds.float().contiguous().view(batch_preds.shape[0], -1)
-    tflat        = batch_targets.float().contiguous().view(batch_targets.shape[0], -1)
+    pflat        = batch_preds.float().view(batch_preds.shape[0], -1)
+    tflat        = batch_targets.float().view(batch_targets.shape[0], -1)
     intersection = torch.sum(torch.mul(pflat, tflat), dim = 1)
     nom          = 2. * intersection + smooth
     denom        = torch.sum(pflat, dim=1) + torch.sum(tflat, dim = 1) + smooth
@@ -195,6 +198,34 @@ def dice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean', de
         raise NotImplementedError(f'Dice loss reduction {reduction} not implemented') 
     return loss 
 
+def multidice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean', reduction_channels='mean', debug_mode = False):
+    pflat             = batch_preds.float().view(batch_preds.shape[0], batch_preds.shape[1], -1)
+    tflat             = batch_targets.float().view(batch_targets.shape[0], batch_targets.shape[1], -1)
+    intersections     = torch.sum(torch.mul(pflat, tflat), dim = 2)
+    nom               = 2. * intersections + smooth
+    denom             = torch.sum(pflat, dim = 2) + torch.sum(tflat, dim = 2) + smooth
+    dice_losses       = 1 - nom/denom
+    
+    # add weight for aneurysm class
+    #dice_losses[:,2] *= 2 
+    
+    # take only the classes of aneurysm and the vessels
+    dice_losses = dice_losses[:, 1:]
+
+    # collapse all dice loss for channels
+    if reduction_channels == 'mean':
+        dice_losses       = torch.mean(dice_losses, dim = 1)
+    elif reduction_channels == 'sum':
+        dice_losses       = torch.sum(dice_losses, dim = 1)
+    
+    if reduction == 'mean':
+        loss = torch.mean(dice_losses)
+    elif reduction == 'sum':
+        loss = torch.sum(dice_losses)
+    else:
+        raise NotImplementedError(f'Dice loss reduction {reduction} not implemented') 
+    return loss 
+
 def graph_loss(node_fts_preds, node_fts_gt, adj_mtx_preds, adj_mtx_weight, adj_mtx_gt):
     
     # compute adjacency matrix loss using mean square error in sparse matrices
@@ -209,6 +240,26 @@ def graph_loss(node_fts_preds, node_fts_gt, adj_mtx_preds, adj_mtx_weight, adj_m
     
     # compute node features loss
     d_loss = dice_loss(node_fts_preds, node_fts_gt)
+    return d_loss + torch.mean(adj_loss)
+
+def multigraph_loss(node_fts_preds, node_fts_gt, adj_mtx_preds, adj_mtx_weight, adj_mtx_gt):
+     # compute adjacency matrix loss using mean square error in sparse matrices
+    adj_loss = []
+    for image in range(adj_mtx_preds.shape[0]):
+        indices      = torch.cat((adj_mtx_preds[image], adj_mtx_gt[image]), dim = 1)
+        init_weights = -1 * node_fts_preds.new_ones(adj_mtx_gt[image].size(1)) 
+        vals         = torch.cat((adj_mtx_weight[image], init_weights))
+        inds, values = coalesce(indices, vals, num_nodes = 3400)
+        adj_loss.append(torch.mean(torch.square(values)))
+    adj_loss = torch.stack(adj_loss)
+    
+    # compute node features loss
+    if node_fts_gt.ndim == 6:
+        print("ERROR: Need work")
+        d_loss = multidice_loss(node_fts_preds.permute(0,2,1,3,4,5).contiguous(), node_fts_gt.permute(0,2,1,3,4,5).contiguous())
+        return d_loss + torch.mean(adj_loss)
+    
+    d_loss = multidice_loss(node_fts_preds, node_fts_gt)
     return d_loss + torch.mean(adj_loss)
 
 #---------- HELPER CLASSES
@@ -380,7 +431,13 @@ class MetricsCollector():
 
     def print_best_metrics(self, which_metric = ''):
         if which_metric == '':
-            for name in self.metrics.keys():
+            
+            metrics_keys       = list(self.metrics.keys())
+            metrics_keys_aneur = [key+'_aneur' for key in self.metrics.keys()] 
+            if self.config.experiment_type == 'three_class':
+                metrics_keys += metrics_keys_aneur
+            
+            for name in metrics_keys:
                 b_epoch      = -1
                 for epoch, epoch_dict in self.log_dict.items():
                     if b_epoch == -1:
@@ -404,8 +461,9 @@ class MetricsCollector():
             print(self.log_dict[b_epoch])
 
 class MetricsClass():
-    def __init__(self, metrics):
-        
+    def __init__(self, metrics, experiment_type):
+
+        self.experiment_type = experiment_type
         if isinstance(metrics, dict):
             self.metrics  = metrics
         else:
@@ -413,8 +471,16 @@ class MetricsClass():
         
         self.avg_results = None
         self.results     = dict()
-        for key in self.metrics.keys(): self.results[key] = []
-        
+        if self.experiment_type == 'binary_class':
+            for key in self.metrics.keys(): self.results[key] = []
+        else:
+            for key in self.metrics.keys():
+                # if the experiment is not the binary, 
+                # we will compute the metrics for the class of aneurysm and 
+                # the mean for all metrics for the rest of the vessels
+                self.results[key]          = []
+                self.results[key+'_aneur'] = []
+
     def __call__(self, node_preds, node_targets):
         '''
         the node matrices should have shapes:
@@ -427,15 +493,28 @@ class MetricsClass():
             for key, func in self.metrics.items():
                 try:
                     if key == 'dice_score_soft': 
+                        # deprecated
                         res = func(node_preds[image], node_targets[image])
-                    else:   
-                        res = func(preds_bin, target_bin)
+                    else:
+                        if self.experiment_type == 'binary_class':
+                            res = func(preds_bin, target_bin)
+                        elif self.experiment_type == 'three_class':
+                            res_aneur = func(preds_bin[:,2,:,:,:], target_bin[:,2,:,:,:])
+                            res       = func(preds_bin[:,1,:,:,:], target_bin[:,1,:,:,:])
+                        else:
+                            print("FUCKKKKK")
                 except Exception as e:
                     print(f'Error {e} in the calculation of metric {key}')
-                    res = np.NAN
+                    res       = np.NAN
+                    res_aneur = np.NAN
 
                 if isinstance(res, torch.Tensor):   res = res.cpu().item()
                 self.results[key].append(res)
+
+                if self.experiment_type != 'binary_class':  
+                    if isinstance(res_aneur, torch.Tensor):   res_aneur = res_aneur.cpu().item()
+                    self.results[key+'_aneur'].append(res_aneur)
+            
             del preds_bin, target_bin
     
     def compute_average_metrics(self):
@@ -479,12 +558,20 @@ def binarize_image(img, threshold = 0.5, one_hot = False):
     # binary problem
     if n_channels == 1:
         nimg = img > threshold
+    elif n_channels == 3:
+        if img.dtype == torch.bool:
+            nimg = img.float()
+        else:
+            nimg           = torch.zeros_like(img)
+            argmax_indexes = torch.argmax(img, dim = 1)
+            nimg.scatter_(1, argmax_indexes.unsqueeze(1), 1) 
     else:
         print("FUCKKK")
-
-    nimg = nimg.float()
+    
+    if nimg.dtype != torch.float:   nimg = nimg.float()
     return nimg
 
+'''
 def DiceScore(image_preds, image_target):
 
     pflat        = image_preds.view(-1)
@@ -493,7 +580,15 @@ def DiceScore(image_preds, image_target):
     tp           = torch.sum((pflat == 1) & (tflat == 1)) 
     fn           = torch.sum((pflat == 0) & (tflat == 1))
     fp           = torch.sum((pflat == 1) & (tflat == 0))
-    if 2*tp + fp + fn == 0: return np.NaN
+    if 2*tp + fp + fn == 0: return 1e-12
+    return 2*tp/(2*tp + fp + fn)
+'''
+def DiceScore(image_preds, image_target):
+
+    tp           = torch.sum((image_preds == 1) & (image_target == 1)) 
+    fn           = torch.sum((image_preds == 0) & (image_target == 1))
+    fp           = torch.sum((image_preds == 1) & (image_target == 0))
+    if 2*tp + fp + fn == 0: return 1e-12
     return 2*tp/(2*tp + fp + fn)
 
 def DiceScoreSoft(image_preds, image_target, smooth = 1e-05):
@@ -505,7 +600,7 @@ def DiceScoreSoft(image_preds, image_target, smooth = 1e-05):
     denom        = torch.sum(pflat) + torch.sum(tflat) + smooth
     dice_soft    = nom/denom
     return dice_soft.cpu().item()
- 
+''' 
 def Recall(image_preds, image_target):
     pflat = image_preds.view(-1)
     tflat = image_target.view(-1)
@@ -513,9 +608,18 @@ def Recall(image_preds, image_target):
     tp = torch.sum((pflat == 1) & (tflat == 1))
     fn = torch.sum((pflat == 0) & (tflat == 1))
 
-    if tp + fn == 0: return np.NaN
+    if tp + fn == 0: return 1e-12
+    return tp/(tp+fn)
+'''
+def Recall(image_preds, image_target):
+
+    tp = torch.sum((image_preds == 1) & (image_target == 1))
+    fn = torch.sum((image_preds == 0) & (image_target == 1))
+
+    if tp + fn == 0: return 1e-12
     return tp/(tp+fn)
 
+'''
 def Precision(image_preds, image_target):
     pflat = image_preds.view(-1)
     tflat = image_target.view(-1)
@@ -523,99 +627,11 @@ def Precision(image_preds, image_target):
     fp = torch.sum((pflat == 1) & (tflat == 0))
     if fp + tp == 0: return 1e-12
     return tp/(tp+fp)
-
-# to remove
-def dice_score_metric(batch_preds, batch_targets, smooth = 1e-05):
+'''
+def Precision(image_preds, image_target):
     
-    pflat        = batch_preds.float().contiguous().view(batch_preds.shape[0], -1)
-    tflat        = batch_targets.float().contiguous().view(batch_targets.shape[0], -1)
-    intersection = torch.sum(torch.mul(pflat, tflat), dim = 1)
-    nom          = 2. * intersection + smooth
-    denom        = torch.sum(pflat, dim=1) + torch.sum(tflat, dim = 1) + smooth
-
-    dice_scores      = nom/denom
-    dice_scores_list = dice_scores.view(-1).cpu().tolist()
+    tp = torch.sum((image_preds == 1) & (image_target == 1))
+    fp = torch.sum((image_preds == 1) & (image_target == 0))
     
-    del dice_scores, pflat, tflat, intersection, nom, denom
-    return dice_scores_list
-
-#---------- TESTING FUNCTIONS
-def model_predict_single(model_path, test_dataloader, config, path_to_save_results):
-    
-    model = load_model(model_path, config)
-
-    #---------- logs and metrics
-    eval_metrics   = get_evaluation_metrics() 
-    test_collector = MetricsCollector(eval_metrics, config, path_to_save_results)
-
-    #---------- Testing LOOP
-    model.eval()
-    test_epoch       = MetricsClass(eval_metrics)
-    # each batch contains n_images, n_patches, 1 channel, patch_size_x, patch_size_y, patch_size_z
-    with tqdm(test_dataloader, unit='batch') as tqdm_loader:
-        for adj_mtx, fts, adj_mtx_gt, fts_gt in tqdm_loader:
-            #---------- test model
-            if config.use_patches == True:
-                if config.only_unets_flag == True:
-                    #print("INFO: test-v1")
-                    fts_preds = test_v1(model, fts, fts_gt, config)
-                elif config.only_unets_flag == False:
-                    #print("INFO: test-v2")
-                    fts_preds = test_v2(model, adj_mtx, fts, adj_mtx_gt, fts_gt, config)
-            elif config.use_patches == False:
-                #print("INFO: test-v3")
-                fts_preds = test_v3(model, fts, fts_gt, config)
-            
-            test_epoch(fts_preds, fts_gt)
-    test_collector.add_epoch(test_epoch, 0, 0, 0)
-
-
-def test_v1(model, node_fts, node_fts_gt, config):
-    
-    with torch.no_grad():    
-        node_fts       = node_fts.to(config.device)
-        node_fts_gt    = node_fts_gt.to(config.device)
-        batch_shape    = node_fts.shape
-                    
-        node_fts    = node_fts.view(batch_shape[0]*batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
-        batch_preds = []
-        minibatch   = 256
-        idx         = 0
-        # pass all patches through the unet
-        while True:
-            index_start = idx * minibatch
-            index_end   = (idx + 1) * minibatch
-            idx        += 1
-            if index_start >= node_fts.shape[0]: break
-            if index_end > node_fts.shape[0]:   index_end = node_fts.shape[0]
-            preds = model(node_fts[index_start:index_end, :, :, :, :])
-            batch_preds.append(preds)
-        batch_preds = torch.cat(batch_preds, dim = 0)
-        batch_preds = batch_preds.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
-    return batch_preds
-
-def test_v2(model, adj_mtx, node_fts, adj_mtx_gt, node_fts_gt, config):
-    with torch.no_grad():
-        node_fts       = node_fts.to(config.device)
-        adj_mtx        = adj_mtx.to(config.device)
-
-        node_preds, adj_preds = model(node_fts, adj_mtx)
-    return node_preds
-
-def test_v3(model, image, segm_image, config):
-    with torch.no_grad():
-        
-        image      = image.to(config.device)
-        pred       = model(image)
-    return pred
-
-def load_model(model_path, config):
-    
-    if not os.path.exists(model_path):
-        raise FileNotFoundError('Model path {model_path} does not exists')
-    
-    model = get_model(config.which_net, config)
-    model.load_state_dict(model_path)
-    model.to(config.device)
-    model.eval()
-    return model
+    if fp + tp == 0: return 1e-12
+    return tp/(tp+fp)

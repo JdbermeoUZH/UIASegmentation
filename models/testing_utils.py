@@ -1,23 +1,61 @@
 import os
+import sys
+sys.path.append('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation')
+
 import csv
 import torch
 import numpy as np
 from tqdm import tqdm
+import nibabel as nib
 from models import model_utils as mu
 from dataloading import test_datasets
 from torch.utils.data import DataLoader
 from dataloading import dataloaders as dl
 
 #---------- TESTING FUNCTIONS
-def save_images(name, pred_image, segm_image, model_dict):
+def read_all_from_nii(path_image_nii):
+    nii_img = nib.load(path_image_nii)
+    return nii_img.get_fdata(), nii_img.affine.copy(), nii_img.header.copy()
+
+def save_nii_img(nifti_image, path_to_save):
+    nib.save(nifti_image, path_to_save)
+
+def save_images(name, pred_image, segm_image, image, model_dict, split_dict):
     
     pred_image_bin  = mu.binarize_image(pred_image).detach().cpu().numpy()
     pred_path       = model_dict['images_path'] + '/' + name + '_pred.npy'
-    segm_image_bin  = mu.binarize_image(segm_image).detach().cpu().numpy()
+    
+    #segm_image_bin  = mu.binarize_image(segm_image).detach().cpu().numpy()
+    segm_image      = segm_image.detach().cpu().numpy()
     segm_path       = model_dict['images_path'] + '/' + name +  '_segm.npy'
+    
+    init_image      = image.detach().cpu().numpy()
+    init_image_path = model_dict['images_path'] + '/' + name +  '_init.npy'
+    
+    pred_image_bin = np.squeeze(pred_image_bin, axis = (0,1))
+    segm_image     = np.squeeze(segm_image, axis = (0,1))
+    init_image     = np.squeeze(init_image, axis = (0,1))
+    # npy images save
     np.save(pred_path, pred_image_bin)
-    np.save(segm_path, segm_image_bin)
+    np.save(segm_path, segm_image)
+    np.save(init_image_path, init_image)
 
+    # nifti images save
+    path_to_nifti = '/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed/USZ_BrainArtery/USZ_BrainArtery_GNN/hdf5_dataset_with_nifti'
+    path_to_img   = os.path.join(path_to_nifti, name + '_seg.nii.gz')
+    _, aff, header =  read_all_from_nii(path_to_img)
+
+    pred_path_nii = model_dict['images_path'] + '/' + name + '_pred.nii.gz'
+    save_nii_img(nib.Nifti1Image(pred_image_bin, aff, header),
+                 pred_path_nii)
+    
+    segm_path_nii = model_dict['images_path'] + '/' + name +  '_segm.nii.gz'
+    save_nii_img(nib.Nifti1Image(segm_image, aff, header),
+                 segm_path_nii)
+    
+    init_path_nii = model_dict['images_path'] + '/' + name +  '_init.nii.gz'
+    save_nii_img(nib.Nifti1Image(init_image, aff, header),
+                 init_path_nii)
 
 def save_individual_metrics(scores_dict, path):
     header  = ['names']
@@ -28,9 +66,31 @@ def save_individual_metrics(scores_dict, path):
         writer.writerow(header)
         for key, stats_dict in scores_dict.items():
             line = [key]
-            for _, value in stats_dict.items(): line.append(value)
+            for _, value in stats_dict.items(): 
+                if isinstance(value, torch.Tensor): value = value.cpu().item()
+                line.append(value)
             writer.writerow(line)
 
+def save_aneurysm_scores(aneurysm_scores, path):
+    
+    first_key    = list(aneurysm_scores.keys())[0]
+    metric_keys  = list(aneurysm_scores[first_key].keys())
+    
+    mean_scores = dict() 
+    _scores     = dict()
+    for metric_key in metric_keys: _scores[metric_key] = []
+        
+    for name, scores_dict in aneurysm_scores.items():
+        for metric_key, val in scores_dict.items():
+            if isinstance(val, torch.Tensor): val = val.cpu().item()
+            _scores[metric_key].append(val)
+    
+    for metric_key, scores_list in _scores.items():
+        mean_scores[metric_key] = np.mean(scores_list)
+    
+    aneurysm_scores['mean results'] = mean_scores
+    save_individual_metrics(aneurysm_scores, path)
+    
 
 def get_testdataloader(type_of_loader, 
                        data, 
@@ -67,7 +127,7 @@ def load_model_weights(model_path, config, device):
     return model
 
 
-def model_predict_single(test_dataloader, config, model_dict):
+def model_predict_single(test_dataloader, config, model_dict, split_dict):
     
     #---can also run locally
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -76,8 +136,10 @@ def model_predict_single(test_dataloader, config, model_dict):
     #---------- logs and metrics
     eval_metrics   = mu.get_evaluation_metrics() 
     test_collector = mu.MetricsCollector(eval_metrics, config, model_dict['path_to_save_test'])
-    test_epoch     = mu.MetricsClass(eval_metrics)
-    if model_dict['save_extend']:   individual_scores = dict()
+    test_epoch     = mu.MetricsClass(eval_metrics, config.experiment_type)
+    if model_dict['save_extend']:
+        individual_scores = dict()
+        aneurysm_scores   = dict()
 
     #---------- Testing LOOP
     if config.which_net == 'combnet_v4':
@@ -93,12 +155,12 @@ def model_predict_single(test_dataloader, config, model_dict):
                 if model_dict['save_extend']:
                     individual_scores[name] = test_epoch.get_last_item()
                     # TODO: reshape the patches back to one piece and save the image
-                    #save_images(name, pred_image, segm_image, model_dict)
+                    #save_images(name, pred_image, segm_image, image, model_dict)
 
     elif config.which_net == 'unet_baseline':
         print("INFO: Testing-v3 started")
         with tqdm(test_dataloader, unit='batch') as tqdm_loader:
-            for name, _, image, _, segm_image in tqdm_loader:
+            for name, _, image, _, segm_image, segm_image2 in tqdm_loader:
                 name = name[0]
                 print(f'predict for {name}')
                 
@@ -107,12 +169,13 @@ def model_predict_single(test_dataloader, config, model_dict):
                 
                 if model_dict['save_extend']:
                     individual_scores[name] = test_epoch.get_last_item()
-                    save_images(name, pred_image, segm_image, model_dict)
+                    aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
+                    save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
 
     elif config.which_net == 'combnet_v5':
         print("INFO: Testing-v5 started")
         with tqdm(test_dataloader, unit='batch') as tqdm_loader:
-            for name, adj_mtx, image, adj_mtx_gt, segm_image in tqdm_loader:
+            for name, adj_mtx, image, adj_mtx_gt, segm_image, segm_image2 in tqdm_loader:
                 name = name[0]
                 print(f'predict for {name}')
 
@@ -121,7 +184,8 @@ def model_predict_single(test_dataloader, config, model_dict):
 
                 if model_dict['save_extend']:
                     individual_scores[name] = test_epoch.get_last_item()
-                    save_images(name, pred_image, segm_image, model_dict)
+                    aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
+                    save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
     
     #---------- save results and metrics
     test_epoch.print_aggregate_results()
@@ -130,11 +194,12 @@ def model_predict_single(test_dataloader, config, model_dict):
     test_collector.save_logs()
     
     if model_dict['save_extend']:
-        save_individual_metrics(individual_scores, model_dict['ind_scores_path'])    
+        save_individual_metrics(individual_scores, model_dict['ind_scores_path'])
+        save_aneurysm_scores(aneurysm_scores, model_dict['aneur_scores_path']) 
     return 
 
 
-def ensemble_model_predict(test_dataloader, config, model_dict):
+def ensemble_model_predict(test_dataloader, config, model_dict, split_dict):
     
     #---can also run locally
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -153,8 +218,10 @@ def ensemble_model_predict(test_dataloader, config, model_dict):
     #---------- logs and metrics
     eval_metrics   = mu.get_evaluation_metrics() 
     test_collector = mu.MetricsCollector(eval_metrics, config, model_dict['path_to_save_test'])
-    test_epoch     = mu.MetricsClass(eval_metrics)
-    if model_dict['save_extend']:   individual_scores = dict()
+    test_epoch     = mu.MetricsClass(eval_metrics, config.experiment_type)
+    if model_dict['save_extend']:   
+        individual_scores = dict()
+        aneurysm_scores   = dict()
 
     #---------- Testing LOOP
     if config.which_net == 'combnet_v4':
@@ -168,10 +235,10 @@ def ensemble_model_predict(test_dataloader, config, model_dict):
                 for model in models:
                     node_fts_temp = test_model_v4(model, node_fts, adj_mtx, node_fts_gt, device)
                     if node_fts_preds == None:
-                        if model_dict['en_method'] == 'voting': node_fts_preds = mu.binarize_image(node_fts_temp)
+                        if model_dict['en_method'] == 'voting': node_fts_preds = mu.binarize_image(node_fts_temp[0]).unsqueeze(0)
                         elif model_dict['en_method'] == 'mean_aggr': node_fts_preds = node_fts_temp
                     else:
-                        if model_dict['en_method'] == 'voting': node_fts_preds += mu.binarize_image(node_fts_temp)
+                        if model_dict['en_method'] == 'voting': node_fts_preds += mu.binarize_image(node_fts_temp[0]).unsqueeze(0)
                         elif model_dict['en_method'] == 'mean_aggr': node_fts_preds += node_fts_temp
                 if model_dict['en_method'] == 'voting': node_fts_preds = torch.where(node_fts_preds >= len(models)/2.0, 1, 0)
                 elif model_dict['en_method'] == 'mean_aggr': node_fts_preds = node_fts_preds/len(models)
@@ -185,7 +252,7 @@ def ensemble_model_predict(test_dataloader, config, model_dict):
     elif config.which_net == 'unet_baseline':
         print("INFO: Testing-v3 started")
         with tqdm(test_dataloader, unit='batch') as tqdm_loader:
-            for name, _, image, _, segm_image in tqdm_loader:
+            for name, _, image, _, segm_image, segm_image2 in tqdm_loader:
                 name = name[0]
                 print(f'predict for {name}')
 
@@ -204,12 +271,13 @@ def ensemble_model_predict(test_dataloader, config, model_dict):
                 test_epoch(pred_image, segm_image)
                 if model_dict['save_extend']:
                     individual_scores[name] = test_epoch.get_last_item()
-                    #save_images(name, pred_image, segm_image, model_dict)
+                    #aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
+                    #save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
 
     elif config.which_net == 'combnet_v5':
         print("INFO: Testing-v5 started")
         with tqdm(test_dataloader, unit='batch') as tqdm_loader:
-            for name, adj_mtx, image, adj_mtx_gt, segm_image in tqdm_loader:
+            for name, adj_mtx, image, adj_mtx_gt, segm_image, segm_image2 in tqdm_loader:
                 name = name[0]
                 print(f'predict for {name}')
 
@@ -217,7 +285,7 @@ def ensemble_model_predict(test_dataloader, config, model_dict):
                 for model in models:
                     pred_temp = test_model_v5(model, image, adj_mtx, segm_image, device)
                     if pred_image == None:
-                        if model_dict['en_method'] == 'voting': pred_image = mu.binarize(pred_temp)
+                        if model_dict['en_method'] == 'voting': pred_image = mu.binarize_image(pred_temp)
                         elif model_dict['en_method'] == 'mean_aggr': pred_image = pred_temp
                     else:
                         if model_dict['en_method'] == 'voting': pred_image += mu.binarize_image(pred_temp)
@@ -228,7 +296,8 @@ def ensemble_model_predict(test_dataloader, config, model_dict):
                 test_epoch(pred_image, segm_image)
                 if model_dict['save_extend']:
                     individual_scores[name] = test_epoch.get_last_item()
-                    #save_images(name, pred_image, segm_image, model_dict)
+                    #aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
+                    #save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
     
     #---------- save results and metrics
     test_epoch.print_aggregate_results()
@@ -238,6 +307,7 @@ def ensemble_model_predict(test_dataloader, config, model_dict):
     
     if model_dict['save_extend']:
         save_individual_metrics(individual_scores, model_dict['ind_scores_path'])    
+        #save_aneurysm_scores(aneurysm_scores, model_dict['aneur_scores_path']) 
     return
 
 def test_model_v3(model, image, segm_image, device):
@@ -262,3 +332,27 @@ def test_model_v5(model, image, adj_mtx, segm_image, device):
         segm_image = segm_image.to(device)
         pred_image, _, _ = model(image, adj_mtx)
     return pred_image
+
+def calculate_aneurysm_metrics(pred_image, segm_image2):
+    aneur_mask      = torch.where(segm_image2 == 4, 1, 0)
+    pred_image_bin  = mu.binarize_image(pred_image)
+    pred_aneur_mask = torch.mul(pred_image_bin, aneur_mask)
+
+    # compute dice score recall and precision
+    tp = torch.sum((pred_aneur_mask == 1) & (aneur_mask == 1))
+    fp = torch.sum((pred_aneur_mask == 1) & (aneur_mask == 0))
+    fn = torch.sum((pred_aneur_mask == 0) & (aneur_mask == 1))
+
+    if 2*tp + fp + fn == 0: dice_aneur = 1e-12
+    else: dice_aneur = 2*tp/(2*tp + fp + fn)
+
+    if tp + fn == 0: recall_aneur = 1e-12
+    else: recall_aneur = tp/(tp+fn)
+
+    if fp + tp == 0: precision_aneur = 1e-12
+    else: precision_aneur = tp/(tp+fp)
+    metrics = {'dice_aneur':dice_aneur, 
+               'recall_aneur':recall_aneur, 
+               'precision_aneur':precision_aneur}
+    
+    return metrics

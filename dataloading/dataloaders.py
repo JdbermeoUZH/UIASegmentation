@@ -127,6 +127,15 @@ def get_label_transform(experiment_type):
     if experiment_type == 'binary_class':
         transforms = ComposeTransforms([BinarizeSegmentation()])
         return transforms
+    elif experiment_type == 'three_class':
+        # hard code aneyrism type = label 4
+        transforms = ComposeTransforms([CollapseLabels([i for i in range(1,22) if i != 4]),
+                                        MapLabel(target_label = 4, new_label = 2),
+                                        OneHotEncode(num_classes = 3)])
+        return transforms
+    elif experiment_type == 'multi_class':
+        transforms = ComposeTransforms([OneHotEncode(num_classes = 22)])
+        return None
     else:
         return None
 
@@ -299,8 +308,8 @@ class RandomAffine():
                 segm = segm.unsqueeze(0)
             
             subject = tio.Subject(image1 = tio.ScalarImage(tensor = imag),
-                                  image2 = tio.ScalarImage(tensor = mask),
-                                  image3 = tio.ScalarImage(tensor = segm))
+                                  image2 = tio.LabelMap(tensor = mask),
+                                  image3 = tio.LabelMap(tensor = segm))
             subject = self.rand_affine(subject)
             imag = subject['image1'].data.squeeze(0)
             mask = subject['image2'].data.squeeze(0)
@@ -366,6 +375,49 @@ class BinarizeSegmentation():
     
     def __call__(self, item):
         segm         = item['segm']
+        
+        #--- only for testing
+        item['segm_before_bin'] = segm.clone()
+        #only for testing ---
+        
         segm         = torch.where(segm > 0, 1, 0)
+        item['segm'] = segm
+        return item
+
+class CollapseLabels():
+    def __init__(self, target_labels):
+        # target labels must be sorted
+        self.master_label  = target_labels.pop(0)
+        self.target_labels = target_labels
+         
+
+    def __call__(self, item):
+        segm = item['segm']
+        for tlabel in self.target_labels:
+            segm = torch.where(segm == tlabel, self.master_label, segm)
+        item['segm'] = segm
+        return item
+
+class MapLabel():
+    def __init__(self, target_label, new_label):
+        self.target_label = target_label
+        self.new_label    = new_label
+    
+    def __call__(self, item):
+        segm = item['segm']
+        segm = torch.where(segm == self.target_label, self.new_label, segm)
+        item['segm'] = segm
+        return item
+
+class OneHotEncode():
+    def __init__(self, num_classes):
+        self.num_classes = num_classes
+    
+    def __call__(self, item):
+        segm                       = item['segm']
+        item['segm_before_onehot'] = segm
+
+        segm = torch.nn.functional.one_hot(segm.long(), self.num_classes).to(torch.bool)
+        segm = segm.permute(-1, *range(segm.dim() -1)).contiguous()
         item['segm'] = segm
         return item

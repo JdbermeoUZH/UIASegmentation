@@ -302,7 +302,7 @@ def train_v3(model,
         with torch.no_grad():
             valid_counter    = 0
             running_loss_val = 0.0
-            eval_epoch       = mu.MetricsClass(eval_metrics)
+            eval_epoch       = mu.MetricsClass(eval_metrics, config.experiment_type)
             # each batch contains n_images, n_patches, 1 channel, patch_size_x, patch_size_y, patch_size_z
             with tqdm(valid_dataloader, unit='batch') as tqdm_loader:
                 for _, image, _, segm_image in tqdm_loader:
@@ -379,7 +379,6 @@ def train_v4(model,
                 adj_mtx        = adj_mtx.to(device)
                 node_fts_gt    = node_fts_gt.to(device)
                 adj_mtx_gt     = adj_mtx_gt.to(device)
-                assert node_fts.shape == node_fts_gt.shape, f'Training: got different dimensions for preds:{node_fts.shape} and training: {node_fts_gt.shape}'
         
                 optimizer.zero_grad()
                 node_fts_preds, adj_mtx_preds, adj_mtx_weights_preds = model(node_fts, adj_mtx)
@@ -391,7 +390,6 @@ def train_v4(model,
                 loss_train.backward()
                 optimizer.step()
                 running_loss_train   += loss_train.item()
-                
                 del loss_train, node_fts, node_fts_preds, node_fts_gt, adj_mtx, adj_mtx_preds, adj_mtx_weights_preds, adj_mtx_gt
         #---------- print out message
         train_end_time   = time.time()
@@ -403,7 +401,7 @@ def train_v4(model,
         with torch.no_grad():
             valid_counter    = 0
             running_loss_val = 0.0
-            eval_epoch       = mu.MetricsClass(eval_metrics)
+            eval_epoch       = mu.MetricsClass(eval_metrics, config.experiment_type)
             # each batch contains n_images, n_patches, 1 channel, patch_size_x, patch_size_y, patch_size_z
             with tqdm(valid_dataloader, unit='batch') as tqdm_loader:
                 for adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
@@ -412,7 +410,6 @@ def train_v4(model,
                     adj_mtx        = adj_mtx.to(device)
                     node_fts_gt    = node_fts_gt.to(device)
                     adj_mtx_gt     = adj_mtx_gt.to(device)
-                    assert node_fts.shape == node_fts_gt.shape, f'Validation: got different dimensions for preds:{node_fts.shape} and training: {node_fts_gt.shape}'
                     
                     node_fts_preds, adj_mtx_preds, adj_mtx_weights_preds = model(node_fts, adj_mtx)
                     loss_val = criterion(node_fts_preds,
@@ -513,7 +510,7 @@ def train_v5(model,
         with torch.no_grad():
             valid_counter    = 0
             running_loss_val = 0.0
-            eval_epoch       = mu.MetricsClass(eval_metrics)
+            eval_epoch       = mu.MetricsClass(eval_metrics, config.experiment_type)
             # each batch contains n_images, n_patches, 1 channel, patch_size_x, patch_size_y, patch_size_z
             with tqdm(valid_dataloader, unit='batch') as tqdm_loader:
                 for adj_mtx, image, adj_mtx_gt, segm_image in tqdm_loader:

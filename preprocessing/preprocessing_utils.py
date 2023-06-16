@@ -348,6 +348,9 @@ def save_for_deep_learning(name, img_path, seg_path, mask_path, f_dir, apply_res
                                                       new_dims) 
     new_img_path = os.path.join(f_dir, name + '_tof.h5')
     save_hdf5_img(img_data, img_aff, img_header, new_img_path)
+    
+    new_img_path_nii = os.path.join(f_dir, name + '_tof.nii.gz') 
+    save_nii_img(nib.Nifti1Image(img_data, img_aff, img_header), new_img_path_nii)
     del img_data, img_aff, img_header
 
     seg_data, seg_aff, seg_header = read_all_from_nii(seg_path)
@@ -357,6 +360,9 @@ def save_for_deep_learning(name, img_path, seg_path, mask_path, f_dir, apply_res
                                                       new_dims) 
     new_seg_path = os.path.join(f_dir, name + '_seg.h5')
     save_hdf5_img(seg_data, seg_aff, seg_header, new_seg_path)
+
+    new_seg_path_nii = os.path.join(f_dir, name + '_seg.nii.gz')
+    save_nii_img(nib.Nifti1Image(seg_data, seg_aff, seg_header), new_seg_path_nii)
     del seg_data, seg_aff, seg_header
 
     msk_data, msk_aff, msk_header = read_all_from_nii(mask_path)
@@ -373,6 +379,9 @@ def save_for_deep_learning(name, img_path, seg_path, mask_path, f_dir, apply_res
                                                       new_dims) 
     new_mask_path = os.path.join(f_dir, name + '_mask.h5')
     save_hdf5_img(msk_data, msk_aff, msk_header, new_mask_path)
+    
+    new_mask_path_nii = os.path.join(f_dir, name + '_mask.nii.gz')
+    save_nii_img(nib.Nifti1Image(msk_data, msk_aff, msk_header), new_mask_path_nii)
     del msk_data, msk_con, msk_bin, msk_aff, msk_header
 
 def rescale_intensity(volume, percentils=[0.5, 99.5], bins_num=256):
@@ -662,6 +671,12 @@ def recall_metric(pred_mask, gt_mask):
     TP = np.sum(np.logical_and(pred_mask==True, gt_mask == True))
     FN = np.sum(np.logical_and(pred_mask == False, gt_mask == True))
     return TP/(FN+TP)
+
+def precision_metric(pred_mask, gt_mask):
+    TP = np.sum(np.logical_and(pred_mask==True, gt_mask == True))
+    FP = np.sum(np.logical_and(pred_mask == True, gt_mask == False))
+    if FP + TP == 0: return 1e-12
+    return TP/(TP+FP)
 
 #---------- functions for converting/saving file formats
 def conv_nrrd2nifti(path):

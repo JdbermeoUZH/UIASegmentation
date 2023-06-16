@@ -34,6 +34,7 @@ global_threshold          = 99.5
 apply_rescaling           = True
 voxel_size                = np.array([0.3, 0.3, 0.6]) # hyper parameters to be set
 dimensions                = np.array([560, 640, 160]) # or None to leave untouch the initial dimensions
+#dimensions                = np.array([544, 640, 160]) # or None to leave untouch the initial dimensions
 save_logs                 = True
 
 path_to_logs              = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/intermediate_results'
@@ -153,7 +154,7 @@ def preprocess_file(file_idx,
                                                    lock,
                                                    multipreproc)
     
-    final_dir = os.path.join(path_process_data, 'hdf5_dataset')
+    final_dir = os.path.join(path_process_data, 'hdf5_dataset_with_nifti')
     pu.create_dir(final_dir, lock, multipreproc)
     pu.save_for_deep_learning(name_key,
                               init_img_path,

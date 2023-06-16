@@ -20,14 +20,18 @@ test_data_name  = 'test_data'
 fold_id         = 0
 
 # folder name of the dataset
-folder_name     = 'hdf5_dataset_small'
+folder_name     = 'hdf5_dataset'
 
 
 #---------- experiment
-exp_name        = 'baseline'
-experiment_type = 'binary_class' # choose between 'binary_class' or 'three_class' or 'multi_class' 
+exp_name        = 'nodiceforback_f0_50'
+
+#experiment_type = 'binary_class' # choose between 'binary_class' or 'three_class' or 'multi_class' 
+experiment_type = 'three_class' # choose between 'binary_class' or 'three_class' or 'multi_class' 
+#experiment_type = 'multi_class' # choose between 'binary_class' or 'three_class' or 'multi_class' 
+
 timestamp       = int(time.time())
-experiment_name = f'{experiment_type}_{which_net}_{timestamp}'
+experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
 
 
 #---------- paths
@@ -35,7 +39,6 @@ path_data                 = f'/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed
 path_splits               = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/datasets/{splits_name}'
 path_results              = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results'
 path_to_models            = f'/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed/USZ_BrainArtery/USZ_BrainArtery_GNN/models'
-path_intermediate_results = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/intermediate_results/{experiment_name}'
 
 
 #---------- variables
@@ -49,6 +52,9 @@ num_workers        = 2
 batch_size         = 1
 batch_size_val     = 1
 batch_size_test    = 1
+# the following are not used.
+graph_patch_size   = [32,32,16]
+graph_connectivity = 26 # available options 6 (only faces), 18(faces & edges), 26(faces, edges & corners)
 
 #---------- data processing
 normalization                = 'min_max' # choose between 'min_max' or 'standardization'
@@ -58,14 +64,23 @@ transforms_probability       = 0.5
 transforms_probability_valid = 0 
 
 #---------- model 
-only_unets_flag     = True
-number_of_epochs    = 4
+only_unets_flag     = False
+use_patches         = False
+use_gae             = False
+number_of_epochs    = 50
 use_early_stopping  = True
-patience            = 10
+patience            = 20
 activation_function = 'relu'
+
+#output_channels     = 1
+output_channels     = 3
+#output_channels     = 22
+
 which_optimizer     = 'adam'
 learning_rate       = 0.001
-use_scheduler       = True
-which_scheduler     = 'reduce_lr_on_plateau' # options are: 'reduce_lr_on_plateau', 'one_cylce_lr', 'step_lr'
+use_scheduler       = False
+which_scheduler     = 'r' # options are: 'reduce_lr_on_plateau', 'one_cylce_lr', 'step_lr'
 weight_decay        = 0.001
-which_loss          = 'dice_loss'
+
+#which_loss          = 'dice_loss'
+which_loss          = 'multidice_loss'

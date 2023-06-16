@@ -7,7 +7,7 @@ from general_utils import MYParser
 from models import model_utils as mu
 from models import testing_utils as tu
 
-def testing_interface(test_dataloader, config, param_dict):
+def testing_interface(test_dataloader, config, param_dict, split_dict):
 
     if param_dict['ensemble'] == False:
         for model_path in param_dict['models']:
@@ -28,18 +28,23 @@ def testing_interface(test_dataloader, config, param_dict):
 
             if model_dict['save_extend'] == True:
                 #--- save the resulted images
-                save_images_path = path_to_save_test + '/' + 'npy_images'
+                save_images_path = path_to_save_test + '/' + 'images'
                 if os.path.exists(save_images_path) == False:  os.makedirs(save_images_path)
                 model_dict['images_path'] = save_images_path
 
                 #--- save the metrics for each test instance
                 individual_scores_path = path_to_save_test + '/' + 'individual_scores.csv'
                 model_dict['ind_scores_path'] = individual_scores_path
+                
+                #--- save aneurysm metrics
+                aneurysm_scores_path = path_to_save_test + '/' + 'aneurysm_scores.csv'
+                model_dict['aneur_scores_path'] = aneurysm_scores_path
             
             #---------- testing
             tu.model_predict_single(test_dataloader, 
                                     config, 
-                                    model_dict)
+                                    model_dict,
+                                    split_dict)
             del model_dict
     
     elif param_dict['ensemble'] == True:
@@ -61,41 +66,69 @@ def testing_interface(test_dataloader, config, param_dict):
 
         if model_dict['save_extend'] == True:
                 #--- save the resulted images
-                save_images_path = path_to_save_test + '/' + 'npy_images'
+                save_images_path = path_to_save_test + '/' + 'images'
                 if os.path.exists(save_images_path) == False:  os.makedirs(save_images_path)
                 model_dict['images_path'] = save_images_path
 
                 #--- save the metrics for each test instance
                 individual_scores_path = path_to_save_test + '/' + 'individual_scores.csv'
                 model_dict['ind_scores_path'] = individual_scores_path
-        
+
+                #--- save aneurysm metrics
+                aneurysm_scores_path = path_to_save_test + '/' + 'aneurysm_scores.csv'
+                model_dict['aneur_scores_path'] = aneurysm_scores_path
+                
         tu.ensemble_model_predict(test_dataloader,
                                   config,
-                                  model_dict)
+                                  model_dict, 
+                                  split_dict)
 
 
 
 #---------- TESTING MODELS
 save_extend  = True
 save_path    = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/testing_results'
-
+ 
 ##---------- BINARY PROBLEM
 ###---------- WHOLE UNET
-config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet.py')
-models_paths = ['binary_models/f0_lr001_binary_class_unet_baseline_1686006234/f0_lr001_binary_class_unet_baseline_1686006234_44.mod',
-                'binary_models/f1_lr001_binary_class_unet_baseline_1686006234/f1_lr001_binary_class_unet_baseline_1686006234_35.mod',
-                'binary_models/f2_lr001_binary_class_unet_baseline_1686006234/f2_lr001_binary_class_unet_baseline_1686006234_47.mod',
-                'binary_models/f3_lr001_binary_class_unet_baseline_1686006252/f3_lr001_binary_class_unet_baseline_1686006252_48.mod',
-                'binary_models/f4_lr001_binary_class_unet_baseline_1686006276/f4_lr001_binary_class_unet_baseline_1686006276_46.mod',
-                ]
+#config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet1.py')
+#models_paths = ['binary_experiment_Jun6/unet_binary/f0_lr001_binary_class_unet_baseline_1686006234/f0_lr001_binary_class_unet_baseline_1686006234_44.mod',
+#                'binary_experiment_Jun6/unet_binary/f1_lr001_binary_class_unet_baseline_1686006234/f1_lr001_binary_class_unet_baseline_1686006234_35.mod',
+#                'binary_experiment_Jun6/unet_binary/f2_lr001_binary_class_unet_baseline_1686006234/f2_lr001_binary_class_unet_baseline_1686006234_47.mod',
+#                'binary_experiment_Jun6/unet_binary/f3_lr001_binary_class_unet_baseline_1686006252/f3_lr001_binary_class_unet_baseline_1686006252_48.mod',
+#                'binary_experiment_Jun6/unet_binary/f4_lr001_binary_class_unet_baseline_1686006276/f4_lr001_binary_class_unet_baseline_1686006276_46.mod']
+#models_paths = ['binary_experiment_Jun6/unet_binary/f0_lr001_binary_class_unet_baseline_1686006234/f0_lr001_binary_class_unet_baseline_1686006234_44.mod']
 
 ###---------- WHOLE UNET WITH GAE
 #config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet_with_gae.py')
-#models_paths = ['/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed/USZ_BrainArtery/USZ_BrainArtery_GNN/models/Jun_5/full_gae_lr0.001_dl1_gl1_binary_class_combnet_v5_1685909041/full_gae_lr0.001_dl1_gl1_binary_class_combnet_v5_1685909041_b.mod']
+#models_paths = ['binary_experiment_Jun6/full_gae_binary/f0_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686009856/f0_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686009856_36.mod',
+#                'binary_experiment_Jun6/full_gae_binary/f1_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686009856/f1_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686009856_48.mod',
+#                'binary_experiment_Jun6/full_gae_binary/f2_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686009877/f2_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686009877_49.mod',
+#                'binary_experiment_Jun6/full_gae_binary/f3_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040620/f3_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040620_29.mod',
+#                'binary_experiment_Jun6/full_gae_binary/f4_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040711/f4_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040711_49.mod']
 
 ###---------- GAE
 #config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/gae_v2.py')
-#models_paths = ['/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed/USZ_BrainArtery/USZ_BrainArtery_GNN/models/Jun_5/gae_v2_lr0.001_dl1_gl1_binary_class_combnet_v4_1685909008/gae_v2_lr0.001_dl1_gl1_binary_class_combnet_v4_1685909008_b.mod']
+#models_paths = ['binary_experiment_Jun6/patched_gae_binary/f0_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053094/f0_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053094_48.mod',
+#                'binary_experiment_Jun6/patched_gae_binary/f1_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053120/f1_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053120_49.mod',
+#                'binary_experiment_Jun6/patched_gae_binary/f2_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053135/f2_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053135_40.mod',
+#                'binary_experiment_Jun6/patched_gae_binary/f3_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686061733/f3_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686061733_42.mod',
+#                'binary_experiment_Jun6/patched_gae_binary/f4_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686063688/f4_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686063688_24.mod']
+
+##---------- 3-class PROBLEM
+###---------- WHOLE UNET
+#config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet.py')
+#models_paths = ['nodiceforback_f0_50_three_class_unet_baseline_1686564617/nodiceforback_f0_50_three_class_unet_baseline_1686564617_48.mod',
+#                'nodiceforback_f1_50_three_class_unet_baseline_1686564658/nodiceforback_f1_50_three_class_unet_baseline_1686564658_3.mod',
+#                'nodiceforback_f2_50_three_class_unet_baseline_1686564718/nodiceforback_f2_50_three_class_unet_baseline_1686564718_3.mod']
+
+###---------- WHOLE UNET WITH GAE
+config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet_with_gae.py')
+models_paths = ['nodiceforback_f0_fullgae_50_three_class_combnet_v5_1686566227/nodiceforback_f0_fullgae_50_three_class_combnet_v5_1686566227_3.mod',
+                'nodiceforback_f1_fullgae_50_three_class_combnet_v5_1686566289/nodiceforback_f1_fullgae_50_three_class_combnet_v5_1686566289_49.mod',
+                'nodiceforback_f2_fullgae_50_three_class_combnet_v5_1686566309/nodiceforback_f2_fullgae_50_three_class_combnet_v5_1686566309_35.mod']
+#                'binary_experiment_Jun6/full_gae_binary/f3_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040620/f3_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040620_29.mod',
+#                'binary_experiment_Jun6/full_gae_binary/f4_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040711/f4_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040711_49.mod']
 
 
 config       = config.config_namespace
@@ -128,4 +161,4 @@ param_dict['save_extend']  = save_extend
 if os.path.exists(param_dict['save_path']) == False:    
     os.makedirs(param_dict['save_path'])
 
-testing_interface(test_dataloader, config, param_dict)
+testing_interface(test_dataloader, config, param_dict, split_dict)

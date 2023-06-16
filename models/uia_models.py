@@ -22,8 +22,7 @@ def act_layer(activation_func, inplace=True, neg_slope =0.2, nprelu=1):
     elif activation_func == 'sigmoid':
         layer = nn.Sigmoid()
     elif activation_func == 'softmax':
-        # to be implemented
-        return None
+        layer = nn.Softmax(dim = 1)
     else:
         raise NotImplementedError(f'activation layer {activation_func} is not implemented')
     return layer
@@ -50,7 +49,7 @@ class DoubleConv(nn.Module):
     def forward(self, x):
         return self.double_conv(x)
 
-
+ 
 class SingleConv(nn.Module):
     def __init__(self, in_channels, out_channels, activation_func1 = ''):
         super().__init__()
@@ -85,7 +84,7 @@ class SingleConv(nn.Module):
         #assert torch.isinf(x).any() == False, f'Inside single conv got inf'
         #assert (x == 0).all()       == False, f'Inside single conv got all 0'
         return self.activation1(x)
-'''    
+'''  
 class Down(nn.Module):
     def __init__(self, in_channels, out_channels, activation_func1='relu', activation_func2='', mid_channels = None):
         super().__init__()
@@ -187,8 +186,11 @@ class UNetDecoder_noskips(nn.Module):
         self.up2   = Up_noskip(self.n3, self.n2, self.act)
         self.up3   = Up_noskip(self.n2, self.n1, self.act)
         if self.exp_type == 'binary_class':
-            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid') 
+            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid')
+        elif self.exp_type == 'three_class':
+            self.outc  = OutConv(self.n1, self.out_channels, 'softmax')
         else:
+            print(f'INFO: In UNET-DECODER use {self.act} as activation layer in the last layer')
             self.outc = OutConv(self.n1, self.out_channels, self.act)
     
     def forward(self, x):
@@ -219,8 +221,11 @@ class SimpleUNet3D(nn.Module):
         self.up2   = Up_noskip(self.n3, self.n2, self.act)
         self.up3   = Up_noskip(self.n2, self.n1, self.act)
         if self.exp_type == 'binary_class':
-            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid') 
+            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid')         
+        elif self.exp_type == 'three_class':
+            self.outc  = OutConv(self.n1, self.out_channels, 'softmax')
         else:
+            print(f'INFO: In UNET-DECODER use {self.act} as activation layer in the last layer')
             self.outc = OutConv(self.n1, self.out_channels, self.act)
 
     def forward(self, x):
@@ -258,9 +263,12 @@ class UNet3D(nn.Module):
         self.up2   = Up(self.n3, self.n2, self.n2, self.act)
         self.up3   = Up(self.n2, self.n1, self.n1, self.act)
         if self.exp_type == 'binary_class':
-            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid') 
+            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid')
+        elif self.exp_type == 'three_class':
+            self.outc  = OutConv(self.n1, self.out_channels, 'softmax')
         else:
-            self.outc = OutConv(self.n1, self.out_channels, self.act)
+            print(f'INFO: In UNET-DECODER use {self.act} as activation layer in the last layer')
+            self.outc = OutConv(self.n1, self.out_channels, self.act) 
 
     def forward(self, x):
         x1 = self.inc(x)
@@ -290,9 +298,13 @@ class UNetDecoder(nn.Module):
         self.up2   = Up(self.n3, self.n2, self.n2, self.act)
         self.up3   = Up(self.n2, self.n1, self.n1, self.act)
         if self.exp_type == 'binary_class':
-            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid') 
+            self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid')
+        elif self.exp_type == 'three_class':
+            self.outc  = OutConv(self.n1, self.out_channels, 'softmax')
         else:
-            self.outc = OutConv(self.n1, self.out_channels, self.act) 
+            print(f'INFO: In UNET-DECODER use {self.act} as activation layer in the last layer')
+            self.outc = OutConv(self.n1, self.out_channels, self.act)
+             
         
     def forward(self, x1, x2, x3, x4):
         x = self.up1(x4, x3)
@@ -1019,7 +1031,7 @@ class CombNet_v4(nn.Module):
                                  batch_preds_g[index_start:index_end, :, :, :, :])
             outputs.append(preds)
         outputs = torch.cat(outputs, dim = 0)
-        outputs = outputs.view(batch_shape[0], batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
+        outputs = outputs.view(batch_shape[0], batch_shape[1], -1, batch_shape[3], batch_shape[4], batch_shape[5])
         return outputs,  adj_mtx_g, adj_weights_g
 
 class CombNet_v5(nn.Module):

@@ -9,6 +9,7 @@ import torch
 
 
 #---------- names
+which_net           = 'unet_no_skip_connections'
 # The .json file contains a dict with keys in format *_data. 
 # Each key corresponds to training, validation and test set
 splits_name     = 'usz_kfold_5.json'
@@ -23,16 +24,15 @@ folder_name     = 'hdf5_dataset'
 
 #---------- experiment
 exp_name        = 'first_exp'
-timestamp       = int(time.time())
-experiment_name = f'{exp_name}_{timestamp}_{fold_id}'
 experiment_type = 'binary_class' # choose between 'binary_class' or 'three_class' or 'multi_class' 
+timestamp       = int(time.time())
+experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
 
 #---------- paths
 path_data                 = f'/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed/USZ_BrainArtery/USZ_BrainArtery_GNN/{folder_name}'
 path_splits               = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/datasets/{splits_name}'
 path_results              = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results/{experiment_name}'
-path_to_models            = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/models'
-path_intermediate_results = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/intermediate_results/{experiment_name}'
+path_to_models            = f'/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed/USZ_BrainArtery/USZ_BrainArtery_GNN/models'
 
 
 #---------- variables
@@ -58,8 +58,11 @@ transforms_probability_valid = 0
 
 #---------- model 
 only_unets_flag     = True
-which_net           = 'unet_no_skip_connections' 
+use_patches         = True 
+use_early_stopping  = False
+use_scheduler       = False
 number_of_epochs    = 20
+output_channels     = 1
 activation_function = 'relu'
 which_optimizer     = 'adam'
 learning_rate       = 0.001

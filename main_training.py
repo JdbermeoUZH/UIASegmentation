@@ -27,6 +27,12 @@ def main():
     #seed_all_rng(123)
     
     config      = MYParser.MyParser()
+    # --- remove afrer implementation
+    #config      = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet.py')
+    #config      = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet_with_gae.py')
+    #config      = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/gae_v2.py')
+    # end remove ---
+     
     config      = config.config_namespace
 
     #---------- initialize important variables
