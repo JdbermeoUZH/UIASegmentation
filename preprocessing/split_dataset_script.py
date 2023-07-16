@@ -4,8 +4,6 @@ The split occured with the constrained to keep the distribution of aneurysm tags
 the same in both training and test set. Because the training data are few, we
 use kfold split in order further divide the training dataset in training and
 validation set.
-
-For now I will hardcode the path to data. Maybe change it later
 '''
 
 import re

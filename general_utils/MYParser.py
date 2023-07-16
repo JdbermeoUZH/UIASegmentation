@@ -31,16 +31,10 @@ class MyParser:
         self.parser = argparse.ArgumentParser(description='Train UIASegmentation model')
         # general arguments
         self.parser.add_argument('-c', '--config_file', type = str, default='', help = 'Config file containing all the parameters')
-        #--- only for development
-        # graph arguments
-        self.parser.add_argument('-gh', '--hidden_channels_g', type = int, default=0, help = 'hidden channels for graph neural network')
-        self.parser.add_argument('-gdd', '--depth_g_dec', type = int, default = -1, help = 'Graph depth decoder for GAE networks')
-    
+
     def populate_config_dict(self):
         parser_dict = vars(self.parser_inputs)
         if parser_dict['config_file'] != '': self.config_file = parser_dict['config_file']
-        if parser_dict['hidden_channels_g'] != 0: self.config_dict['hidden_channels_g'] = parser_dict['hidden_channels_g']
-        if parser_dict['depth_g_dec'] != -1: self.config_dict['depth_g_dec'] = parser_dict['depth_g_dec']
         
     def load_from_py(self, config_file):
         '''

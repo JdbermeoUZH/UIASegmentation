@@ -8,26 +8,10 @@ from general_utils import MYParser
 from dataloading import dataloaders
 from models import model_utils as mu
 
-def seed_all_rng(seed):
-    # Set seed for Python's built-in random number generator
-    random.seed(seed)
-
-    # Set seed for NumPy's random number generator
-    np.random.seed(seed)
-
-    # Set seed for PyTorch's random number generator
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark     = False
-        torch.cuda.manual_seed_all(seed)
-
 def main():
-
-    #seed_all_rng(123)
     
     config      = MYParser.MyParser()
-    # --- remove afrer implementation
+    # --- remove afrer
     #config      = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet.py')
     #config      = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet_with_gae.py')
     #config      = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/gae_v2.py')

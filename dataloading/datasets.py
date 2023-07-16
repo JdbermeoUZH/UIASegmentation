@@ -93,7 +93,8 @@ class UIAGraph_Dataset(Dataset):
             segm_np = new_item['segm_before_onehot'].numpy()
             segm_np = np.where(segm_np > 0, 1, 0)
         elif self.experiment == 'binary_class':
-            segm_np = new_item['segm'].numpy()
+            segm_np = new_item['segm_before_bin'].numpy()
+            segm_np = np.where(segm_np > 0, 1, 0)
         
         segm_np1        = cc3d.connected_components(segm_np, 
                                                     connectivity = self.connectivity)
@@ -202,7 +203,8 @@ class UIA_Dataset(Dataset):
                 segm_np = new_item['segm_before_onehot'].numpy()
                 segm_np = np.where(segm_np > 0, 1, 0)
             elif self.experiment == 'binary_class':
-                segm_np = new_item['segm'].numpy()
+                segm_np = new_item['segm_before_bin'].numpy()
+                segm_np = np.where(segm_np > 0, 1, 0)
             
             
             segm_np1        = cc3d.connected_components(segm_np, 

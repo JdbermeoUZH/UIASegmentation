@@ -58,6 +58,7 @@ def testing_interface(test_dataloader, config, param_dict, split_dict):
         path_to_save_test = model_dict['save_path'] + '/' +\
                             config.which_net + '_'        +\
                             config.experiment_type  + '_' +\
+                            config.exp_name + '_'         +\
                             model_dict['en_method']       +\
                             '_testing'
         
@@ -99,6 +100,12 @@ save_path    = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/testing_resu
 #                'binary_experiment_Jun6/unet_binary/f4_lr001_binary_class_unet_baseline_1686006276/f4_lr001_binary_class_unet_baseline_1686006276_46.mod']
 #models_paths = ['binary_experiment_Jun6/unet_binary/f0_lr001_binary_class_unet_baseline_1686006234/f0_lr001_binary_class_unet_baseline_1686006234_44.mod']
 
+###---------- WHOLE UNET & ANEUR ONLY
+#config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet1.py')
+#models_paths = ['binary_experiment_only_aneur_Jun23/only_aneur_f0_50_binary_class_unet_baseline_1687352494/only_aneur_f0_50_binary_class_unet_baseline_1687352494_6.mod',
+#                'binary_experiment_only_aneur_Jun23/only_aneur_f2_50_binary_class_unet_baseline_1687352517/only_aneur_f2_50_binary_class_unet_baseline_1687352517_5.mod',
+#                'binary_experiment_only_aneur_Jun23/only_aneur_f4_binary_class_unet_baseline_1687525373/only_aneur_f4_binary_class_unet_baseline_1687525373_10.mod']
+
 ###---------- WHOLE UNET WITH GAE
 #config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet_with_gae.py')
 #models_paths = ['binary_experiment_Jun6/full_gae_binary/f0_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686009856/f0_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686009856_36.mod',
@@ -107,13 +114,25 @@ save_path    = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/testing_resu
 #                'binary_experiment_Jun6/full_gae_binary/f3_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040620/f3_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040620_29.mod',
 #                'binary_experiment_Jun6/full_gae_binary/f4_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040711/f4_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040711_49.mod']
 
+###---------- WHOLE UNET WITH GAE & ANEUR ONLY
+#config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet_with_gae.py')
+#models_paths = ['binary_experiment_only_aneur_Jun23/only_aneur_f0_fullgae_50_binary_class_combnet_v5_1687353005/only_aneur_f0_fullgae_50_binary_class_combnet_v5_1687353005_2.mod',
+#                'binary_experiment_only_aneur_Jun23/only_aneur_f1_fullgae_50_binary_class_combnet_v5_1687353042/only_aneur_f1_fullgae_50_binary_class_combnet_v5_1687353042_48.mod',
+#                'binary_experiment_only_aneur_Jun23/only_aneur_f2_fullgae_50_binary_class_combnet_v5_1687353075/only_aneur_f2_fullgae_50_binary_class_combnet_v5_1687353075_0.mod']
+
 ###---------- GAE
-#config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/gae_v2.py')
+#config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/gae2.py')
 #models_paths = ['binary_experiment_Jun6/patched_gae_binary/f0_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053094/f0_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053094_48.mod',
 #                'binary_experiment_Jun6/patched_gae_binary/f1_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053120/f1_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053120_49.mod',
 #                'binary_experiment_Jun6/patched_gae_binary/f2_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053135/f2_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686053135_40.mod',
 #                'binary_experiment_Jun6/patched_gae_binary/f3_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686061733/f3_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686061733_42.mod',
 #                'binary_experiment_Jun6/patched_gae_binary/f4_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686063688/f4_gae_v2_lr001_dl_gl_binary_class_combnet_v4_1686063688_24.mod']
+
+###---------- GAE & ANEUR ONLY
+config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/gae2.py')
+models_paths = ['binary_experiment_only_aneur_Jun23/only_aneur_f0_gae_v2_binary_class_combnet_v4_1687526674/only_aneur_f0_gae_v2_binary_class_combnet_v4_1687526674_6.mod',
+                'binary_experiment_only_aneur_Jun23/only_aneur_f1_gae_v2_binary_class_combnet_v4_1687526714/only_aneur_f1_gae_v2_binary_class_combnet_v4_1687526714_6.mod',
+                'binary_experiment_only_aneur_Jun23/only_aneur_f2_gae_v2_binary_class_combnet_v4_1687691203/only_aneur_f2_gae_v2_binary_class_combnet_v4_1687691203_7.mod']
 
 ##---------- 3-class PROBLEM
 ###---------- WHOLE UNET
@@ -123,10 +142,10 @@ save_path    = '/scratch_net/biwidl210/kvergopoulos/SemesterProject/testing_resu
 #                'nodiceforback_f2_50_three_class_unet_baseline_1686564718/nodiceforback_f2_50_three_class_unet_baseline_1686564718_3.mod']
 
 ###---------- WHOLE UNET WITH GAE
-config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet_with_gae.py')
-models_paths = ['nodiceforback_f0_fullgae_50_three_class_combnet_v5_1686566227/nodiceforback_f0_fullgae_50_three_class_combnet_v5_1686566227_3.mod',
-                'nodiceforback_f1_fullgae_50_three_class_combnet_v5_1686566289/nodiceforback_f1_fullgae_50_three_class_combnet_v5_1686566289_49.mod',
-                'nodiceforback_f2_fullgae_50_three_class_combnet_v5_1686566309/nodiceforback_f2_fullgae_50_three_class_combnet_v5_1686566309_35.mod']
+#config       = MYParser.MyParser('/scratch_net/biwidl210/kvergopoulos/SemesterProject/UIASegmentation/configs/vanilla_unet_with_gae.py')
+#models_paths = ['nodiceforback_f0_fullgae_50_three_class_combnet_v5_1686566227/nodiceforback_f0_fullgae_50_three_class_combnet_v5_1686566227_3.mod',
+#                'nodiceforback_f1_fullgae_50_three_class_combnet_v5_1686566289/nodiceforback_f1_fullgae_50_three_class_combnet_v5_1686566289_49.mod',
+#                'nodiceforback_f2_fullgae_50_three_class_combnet_v5_1686566309/nodiceforback_f2_fullgae_50_three_class_combnet_v5_1686566309_35.mod']
 #                'binary_experiment_Jun6/full_gae_binary/f3_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040620/f3_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040620_29.mod',
 #                'binary_experiment_Jun6/full_gae_binary/f4_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040711/f4_full_gae_lr001_dl_gl_binary_class_combnet_v5_1686040711_49.mod']
 

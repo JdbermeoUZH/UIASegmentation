@@ -169,8 +169,9 @@ def model_predict_single(test_dataloader, config, model_dict, split_dict):
                 
                 if model_dict['save_extend']:
                     individual_scores[name] = test_epoch.get_last_item()
-                    aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
-                    save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
+                    if model_dict['exp_type'] == 'binary_class':
+                        aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
+                        save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
 
     elif config.which_net == 'combnet_v5':
         print("INFO: Testing-v5 started")
@@ -184,8 +185,9 @@ def model_predict_single(test_dataloader, config, model_dict, split_dict):
 
                 if model_dict['save_extend']:
                     individual_scores[name] = test_epoch.get_last_item()
-                    aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
-                    save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
+                    if model_dict['exp_type'] == 'binary_class':
+                        aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
+                        save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
     
     #---------- save results and metrics
     test_epoch.print_aggregate_results()
@@ -195,7 +197,8 @@ def model_predict_single(test_dataloader, config, model_dict, split_dict):
     
     if model_dict['save_extend']:
         save_individual_metrics(individual_scores, model_dict['ind_scores_path'])
-        save_aneurysm_scores(aneurysm_scores, model_dict['aneur_scores_path']) 
+        if model_dict['exp_type'] == 'binary_class':
+            save_aneurysm_scores(aneurysm_scores, model_dict['aneur_scores_path']) 
     return 
 
 
@@ -229,7 +232,7 @@ def ensemble_model_predict(test_dataloader, config, model_dict, split_dict):
         with tqdm(test_dataloader, unit='batch') as tqdm_loader:
             for name, adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
                 name = name[0]
-                print(f'predict for {name}')
+                print(f'\n predict for {name}')
                 
                 node_fts_preds = None
                 for model in models:
@@ -254,7 +257,7 @@ def ensemble_model_predict(test_dataloader, config, model_dict, split_dict):
         with tqdm(test_dataloader, unit='batch') as tqdm_loader:
             for name, _, image, _, segm_image, segm_image2 in tqdm_loader:
                 name = name[0]
-                print(f'predict for {name}')
+                print(f'\n predict for {name}')
 
                 pred_image = None
                 for model in models:
@@ -271,15 +274,16 @@ def ensemble_model_predict(test_dataloader, config, model_dict, split_dict):
                 test_epoch(pred_image, segm_image)
                 if model_dict['save_extend']:
                     individual_scores[name] = test_epoch.get_last_item()
-                    #aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
-                    #save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
+                    #if model_dict['exp_type'] == 'binary_class':
+                    #    aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
+                    #    save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
 
     elif config.which_net == 'combnet_v5':
         print("INFO: Testing-v5 started")
         with tqdm(test_dataloader, unit='batch') as tqdm_loader:
             for name, adj_mtx, image, adj_mtx_gt, segm_image, segm_image2 in tqdm_loader:
                 name = name[0]
-                print(f'predict for {name}')
+                print(f'\n predict for {name}')
 
                 pred_image = None
                 for model in models:
@@ -296,8 +300,9 @@ def ensemble_model_predict(test_dataloader, config, model_dict, split_dict):
                 test_epoch(pred_image, segm_image)
                 if model_dict['save_extend']:
                     individual_scores[name] = test_epoch.get_last_item()
-                    #aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
-                    #save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
+                    #if model_dict['exp_type'] == 'binary_class':
+                    #    aneurysm_scores[name]   = calculate_aneurysm_metrics(pred_image, segm_image2)
+                    #    save_images(name, pred_image, segm_image2, image, model_dict, split_dict)
     
     #---------- save results and metrics
     test_epoch.print_aggregate_results()
@@ -306,8 +311,75 @@ def ensemble_model_predict(test_dataloader, config, model_dict, split_dict):
     test_collector.save_logs()
     
     if model_dict['save_extend']:
-        save_individual_metrics(individual_scores, model_dict['ind_scores_path'])    
-        #save_aneurysm_scores(aneurysm_scores, model_dict['aneur_scores_path']) 
+        save_individual_metrics(individual_scores, model_dict['ind_scores_path'])  
+        #if model_dict['exp_type'] == 'binary_class':  
+        #    save_aneurysm_scores(aneurysm_scores, model_dict['aneur_scores_path']) 
+    return
+
+def ensemble_model_predict_v2(test_dataloader, config, model_dict):
+    
+    #---can also run locally
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    models = list()
+    
+    for model_path in model_dict['models']:
+        try:
+            model = load_model_weights(model_path, config, device)
+        except Exception as e:
+            print(f'ERROR: Could not load model from path: {model_path}... Exiting')
+            print(e)
+            raise RuntimeError
+        models.append(model)
+    print("INFO: Models loading completed")
+
+    #---------- logs and metrics
+    eval_metrics   = mu.get_evaluation_metrics() 
+    test_collector = mu.MetricsCollector(eval_metrics, config, model_dict['path_to_save_test'])
+    test_epoch     = mu.MetricsClass(eval_metrics, config.experiment_type)
+    if model_dict['save_extend']:   
+        individual_scores = dict()
+
+    #---------- Testing LOOP
+    with torch.no_grad():
+        if config.which_net == 'unet_baseline':
+            print("INFO: Testing-v3 started for task 2")
+            with tqdm(test_dataloader, unit='batch') as tqdm_loader:
+                for name, image, mask, segm_image in tqdm_loader:
+                    
+                    name = name[0]
+                    print(f'\n predict for {name}')
+
+                    image      = image.to(device)
+                    segm_image = segm_image.to(device)
+
+                    pred_image = None
+                    for model in models:
+                        # predict aneurysm
+                        pred_temp = model(image)
+                        
+                        if pred_image == None:
+                            if model_dict['en_method'] == 'voting': pred_image = mu.binarize_image(pred_temp)
+                            elif model_dict['en_method'] == 'mean_aggr': pred_image = pred_temp
+                        else:
+                            if model_dict['en_method'] == 'voting': pred_image += mu.binarize_image(pred_temp)
+                            elif model_dict['en_method'] == 'mean_aggr': pred_image += pred_temp
+                    # final predicted image
+                    if model_dict['en_method'] == 'voting': pred_image = torch.where(pred_image >= len(models)/2.0, 1, 0)
+                    elif model_dict['en_method'] == 'mean_aggr': pred_image = pred_image/len(models)
+                    
+                    test_epoch(pred_image, segm_image)
+                    if model_dict['save_extend']:
+                        individual_scores[name] = test_epoch.get_last_item()
+
+    #---------- save results and metrics
+    test_epoch.print_aggregate_results()
+    test_collector.add_epoch(test_epoch, 0, 0, 0)
+    test_collector.save_config()
+    test_collector.save_logs()
+    
+    if model_dict['save_extend']:
+        save_individual_metrics(individual_scores, model_dict['ind_scores_path'])  
+
     return
 
 def test_model_v3(model, image, segm_image, device):

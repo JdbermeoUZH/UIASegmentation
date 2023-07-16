@@ -7,12 +7,6 @@ from dataloading import datasets
 from torch.utils.data import DataLoader
 
 
-#---------- dataloaders
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
-
 def get_dataloaders_all(config, split_dict):
 
     train_loader = get_dataloader_single('train',
@@ -78,19 +72,11 @@ def get_dataloader_single(type_of_loader,
         print("Error: Wrong type of loader in get_loaders_single")
         raise NameError
 
-    # --only for debug
-    #g = torch.Generator()
-    #g.manual_seed(0)
-    # ---
     custom_loader = DataLoader(dataset,
                                batch_size  = batch_size,
                                shuffle     = shuffle,
                                num_workers = num_workers,
                                pin_memory  = True)
-                               #generator=g,
-                               #worker_init_fn=seed_worker
-                               
-    
     return custom_loader
 
 
@@ -325,6 +311,8 @@ class RandomElastic():
     '''
     Adopted from 
     https://torchio.readthedocs.io/transforms/augmentation.html#randomaffine
+    The specific transformation is slow as mentioned in the official documentation
+    Better avoid it for big images.
     '''
     def __init__(self, prob = 0.1):
         self.prob                = prob
@@ -377,10 +365,12 @@ class BinarizeSegmentation():
         segm         = item['segm']
         
         #--- only for testing
-        item['segm_before_bin'] = segm.clone()
+        item['segm_before_bin'] = segm
         #only for testing ---
         
-        segm         = torch.where(segm > 0, 1, 0)
+        #segm         = torch.where(segm > 0, 1, 0)
+        segm         = torch.where(segm == 4, 1, 0)
+
         item['segm'] = segm
         return item
 

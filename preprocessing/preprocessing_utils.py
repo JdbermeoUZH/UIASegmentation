@@ -251,7 +251,7 @@ def create_corrected_mask(mri_path, mapping_path, wrong_mask_path):
     affine_new     = nii_wrong_mask.affine.copy()
 
     ## sanity check. Affine matrix from wrong mask and init image match
-    # A deviation was observed.
+    # A deviation was observed=>Fixed.
     try: 
         tof_list       = [i for i in os.listdir(mri_path) if i.lower().find('tof')!=-1 \
                         and i.lower().endswith('.nii.gz')]
@@ -340,6 +340,7 @@ def adjust_shapes(nii_img, new_voxel_size, new_dimensions=None):
 def save_for_deep_learning(name, img_path, seg_path, mask_path, f_dir, apply_resc, new_vox_size, new_dims=None, lock= None, multipreproc = None):
     
     assert img_path != '' and seg_path != '' and mask_path != '', 'Saving for deep learning: Some paths are empty... Exiting'
+    save_nifti = True
 
     img_data, img_aff, img_header = read_all_from_nii(img_path)
     if apply_resc:
@@ -349,8 +350,9 @@ def save_for_deep_learning(name, img_path, seg_path, mask_path, f_dir, apply_res
     new_img_path = os.path.join(f_dir, name + '_tof.h5')
     save_hdf5_img(img_data, img_aff, img_header, new_img_path)
     
-    new_img_path_nii = os.path.join(f_dir, name + '_tof.nii.gz') 
-    save_nii_img(nib.Nifti1Image(img_data, img_aff, img_header), new_img_path_nii)
+    if save_nifti:
+        new_img_path_nii = os.path.join(f_dir, name + '_tof.nii.gz') 
+        save_nii_img(nib.Nifti1Image(img_data, img_aff, img_header), new_img_path_nii)
     del img_data, img_aff, img_header
 
     seg_data, seg_aff, seg_header = read_all_from_nii(seg_path)
@@ -361,8 +363,9 @@ def save_for_deep_learning(name, img_path, seg_path, mask_path, f_dir, apply_res
     new_seg_path = os.path.join(f_dir, name + '_seg.h5')
     save_hdf5_img(seg_data, seg_aff, seg_header, new_seg_path)
 
-    new_seg_path_nii = os.path.join(f_dir, name + '_seg.nii.gz')
-    save_nii_img(nib.Nifti1Image(seg_data, seg_aff, seg_header), new_seg_path_nii)
+    if save_nifti:
+        new_seg_path_nii = os.path.join(f_dir, name + '_seg.nii.gz')
+        save_nii_img(nib.Nifti1Image(seg_data, seg_aff, seg_header), new_seg_path_nii)
     del seg_data, seg_aff, seg_header
 
     msk_data, msk_aff, msk_header = read_all_from_nii(mask_path)
@@ -380,8 +383,9 @@ def save_for_deep_learning(name, img_path, seg_path, mask_path, f_dir, apply_res
     new_mask_path = os.path.join(f_dir, name + '_mask.h5')
     save_hdf5_img(msk_data, msk_aff, msk_header, new_mask_path)
     
-    new_mask_path_nii = os.path.join(f_dir, name + '_mask.nii.gz')
-    save_nii_img(nib.Nifti1Image(msk_data, msk_aff, msk_header), new_mask_path_nii)
+    if save_nifti:
+        new_mask_path_nii = os.path.join(f_dir, name + '_mask.nii.gz')
+        save_nii_img(nib.Nifti1Image(msk_data, msk_aff, msk_header), new_mask_path_nii)
     del msk_data, msk_con, msk_bin, msk_aff, msk_header
 
 def rescale_intensity(volume, percentils=[0.5, 99.5], bins_num=256):
@@ -492,7 +496,7 @@ def skstrip_bet_interface(name, img_path, seg_path, mask_path, sk_dir, save_logs
             assert msk_data.shape == img_data.shape
         except AssertionError as msg:
             print('ERROR: Inside skstrip_bet_interface mask and init image mismatch')
-            raise IndexError
+            raise AssertionError
         img_data_new = np.where(msk_data>0, img_data, 0)
         save_nii_img(nib.Nifti1Image(img_data_new, img_affine, img_header), 
                      new_img_path)

@@ -15,9 +15,7 @@ def get_model(which_model, config):
 
     Parameters
     ----------
-    which_model: The options are:
-        1) Unet encoder/decoder without skip-connections
-        2) ...
+    which_model
 
     Returns
     -------
@@ -108,11 +106,10 @@ def get_optimizer(model, which_optimizer, lr=0.01, wd=0.01):
     Parameters
     ----------
     model: The used model
-    which_optimizer: The options are:
-        1) adam
-        2) ...
+    which_optimizer:
     lr: learning rate
     wd: weight decay
+
     Returns
     -------
     optimizer
@@ -137,9 +134,7 @@ def get_loss(which_loss):
 
     Parameters
     ----------
-    which_loss: The options are:
-        1) ...
-        2) ...
+    which_loss
 
     Returns
     -------
@@ -166,30 +161,13 @@ def get_evaluation_metrics():
 #---------- LOSSES
 def dice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean', debug_mode = False):
     
-    # TODO: check if .contiguous is unnecesary.
     pflat        = batch_preds.float().view(batch_preds.shape[0], -1)
     tflat        = batch_targets.float().view(batch_targets.shape[0], -1)
     intersection = torch.sum(torch.mul(pflat, tflat), dim = 1)
     nom          = 2. * intersection + smooth
-    denom        = torch.sum(pflat, dim=1) + torch.sum(tflat, dim = 1) + smooth
+    denom        = torch.sum(torch.square(pflat), dim=1) + torch.sum(torch.square(tflat), dim = 1) + smooth
     dice_losses  = 1 - nom/denom
     
-    #--- only for debug
-    if debug_mode == True:
-        
-        assert torch.isnan(pflat).any() == False, f'Inside loss pflat has nan'
-        assert torch.isnan(tflat).any() == False, f'Inside loss tflat has nan'
-
-        assert (pflat == 0).all() == False, f'Inside loss pflat has only 0'
-        assert (tflat == 0).all() == False, f'Inside loss tflat has only 0'
-
-        assert torch.isinf(pflat).any() == False, f'Inside loss pflat has inf'
-        assert torch.isinf(pflat).any() == False, f'Inside loss pflat has inf'
-
-        #assert torch.max(pflat) <= 1 and torch.max(pflat) > 0, f'Inside loss pmax is  {torch.max(pflat)}'
-        #assert torch.min(pflat) < 1 and torch.min(pflat) >=0, f'Inside loss pmin is {torch.min(pflat)}'
-    # only for debug --- 
-
     if reduction == 'mean':
         loss = torch.mean(dice_losses)
     elif reduction == 'sum':
@@ -203,7 +181,7 @@ def multidice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean
     tflat             = batch_targets.float().view(batch_targets.shape[0], batch_targets.shape[1], -1)
     intersections     = torch.sum(torch.mul(pflat, tflat), dim = 2)
     nom               = 2. * intersections + smooth
-    denom             = torch.sum(pflat, dim = 2) + torch.sum(tflat, dim = 2) + smooth
+    denom             = torch.sum(torch.square(pflat), dim = 2) + torch.sum(torch.square(tflat), dim = 2) + smooth
     dice_losses       = 1 - nom/denom
     
     # add weight for aneurysm class
@@ -218,6 +196,7 @@ def multidice_loss(batch_preds, batch_targets, smooth = 1e-05, reduction = 'mean
     elif reduction_channels == 'sum':
         dice_losses       = torch.sum(dice_losses, dim = 1)
     
+    # collapse all dice loss for the batch
     if reduction == 'mean':
         loss = torch.mean(dice_losses)
     elif reduction == 'sum':
@@ -253,9 +232,9 @@ def multigraph_loss(node_fts_preds, node_fts_gt, adj_mtx_preds, adj_mtx_weight, 
         adj_loss.append(torch.mean(torch.square(values)))
     adj_loss = torch.stack(adj_loss)
     
-    # compute node features loss
+    # compute dice loss for nodes
     if node_fts_gt.ndim == 6:
-        print("ERROR: Need work")
+        # very inefficient
         d_loss = multidice_loss(node_fts_preds.permute(0,2,1,3,4,5).contiguous(), node_fts_gt.permute(0,2,1,3,4,5).contiguous())
         return d_loss + torch.mean(adj_loss)
     
@@ -315,7 +294,7 @@ class EarlyStopping():
         elif self.best_loss - val_loss <= self.min_delta:
             self.counter += 1
             if self.counter > self.patience:
-                print(f'INFO: Early stopping encountered. Best epoch {self.best_epoch}')
+                print(f'INFO: Early stopping encountered. Best epoch based on validation dice loss {self.best_epoch}')
                 self.early_stop = True
         return self.early_stop
 
@@ -428,6 +407,7 @@ class MetricsCollector():
         plt.ylabel('loss')
         plt.legend()
         plt.savefig(self.losses_fig_path)
+        plt.close()
 
     def print_best_metrics(self, which_metric = ''):
         if which_metric == '':
@@ -502,7 +482,7 @@ class MetricsClass():
                             res_aneur = func(preds_bin[:,2,:,:,:], target_bin[:,2,:,:,:])
                             res       = func(preds_bin[:,1,:,:,:], target_bin[:,1,:,:,:])
                         else:
-                            print("FUCKKKKK")
+                            raise NotImplementedError
                 except Exception as e:
                     print(f'Error {e} in the calculation of metric {key}')
                     res       = np.NAN
@@ -566,23 +546,11 @@ def binarize_image(img, threshold = 0.5, one_hot = False):
             argmax_indexes = torch.argmax(img, dim = 1)
             nimg.scatter_(1, argmax_indexes.unsqueeze(1), 1) 
     else:
-        print("FUCKKK")
+        print(f"In binarize_image, number of channels {n_channels}")
     
     if nimg.dtype != torch.float:   nimg = nimg.float()
     return nimg
 
-'''
-def DiceScore(image_preds, image_target):
-
-    pflat        = image_preds.view(-1)
-    tflat        = image_target.view(-1)
-
-    tp           = torch.sum((pflat == 1) & (tflat == 1)) 
-    fn           = torch.sum((pflat == 0) & (tflat == 1))
-    fp           = torch.sum((pflat == 1) & (tflat == 0))
-    if 2*tp + fp + fn == 0: return 1e-12
-    return 2*tp/(2*tp + fp + fn)
-'''
 def DiceScore(image_preds, image_target):
 
     tp           = torch.sum((image_preds == 1) & (image_target == 1)) 
@@ -600,17 +568,7 @@ def DiceScoreSoft(image_preds, image_target, smooth = 1e-05):
     denom        = torch.sum(pflat) + torch.sum(tflat) + smooth
     dice_soft    = nom/denom
     return dice_soft.cpu().item()
-''' 
-def Recall(image_preds, image_target):
-    pflat = image_preds.view(-1)
-    tflat = image_target.view(-1)
 
-    tp = torch.sum((pflat == 1) & (tflat == 1))
-    fn = torch.sum((pflat == 0) & (tflat == 1))
-
-    if tp + fn == 0: return 1e-12
-    return tp/(tp+fn)
-'''
 def Recall(image_preds, image_target):
 
     tp = torch.sum((image_preds == 1) & (image_target == 1))
@@ -619,15 +577,6 @@ def Recall(image_preds, image_target):
     if tp + fn == 0: return 1e-12
     return tp/(tp+fn)
 
-'''
-def Precision(image_preds, image_target):
-    pflat = image_preds.view(-1)
-    tflat = image_target.view(-1)
-    tp = torch.sum((pflat == 1) & (tflat == 1))
-    fp = torch.sum((pflat == 1) & (tflat == 0))
-    if fp + tp == 0: return 1e-12
-    return tp/(tp+fp)
-'''
 def Precision(image_preds, image_target):
     
     tp = torch.sum((image_preds == 1) & (image_target == 1))

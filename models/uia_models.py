@@ -249,8 +249,8 @@ class UNet3D(nn.Module):
         self.in_channels  = in_channels
         self.n1           = in_channels * 2
         self.n2           = self.n1 * 2
-        self.n3           = self.n2 * 2
-        self.n4           = self.n3 * 2
+        self.n3           = self.n2 * 4
+        self.n4           = self.n3 * 4
         # out_channels should be 1. Because we like to output an image,
         # which will be the corrected segmented initial image. 
         self.out_channels = out_channels 
