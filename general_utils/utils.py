@@ -294,7 +294,15 @@ def get_adjacency_matrix(volume, patch_size, connectivity):
 
 #---------- General helper functions
 def load_data(path_data, path_splits, fold_id, train_data_name, valid_data_name, test_data_name):
-    
+    """
+    Takes as inout a json file with the names of the files that go into each split (train, validation, test),
+    and returns a dictionary with a full path to the h5 files for the volumes of the image (tof),
+    the coarse mask used as initialization for the GNN (mask), and the ground truth segmentation (segm).
+
+    The return dictionary has a key for each split (train, validation, test) and the value is a
+    list of dictionaries with the name and path to each type of file.
+    """
+
     if os.path.exists(path_data) == False:
         print(f'Path to data {path_data} doesnt exists... Exiting')
         raise FileNotFoundError
@@ -314,11 +322,14 @@ def load_data(path_data, path_splits, fold_id, train_data_name, valid_data_name,
         tof_list = [i for i in names_list if i.find(name) != -1 and i.find('_tof') != -1 and i.endswith('.h5')]
         msk_list = [i for i in names_list if i.find(name) != -1 and i.find('_mask') != -1 and i.endswith('.h5')]
         seg_list = [i for i in names_list if i.find(name) != -1 and i.find('_seg') != -1 and i.endswith('.h5') and i.find('_seg_real') == -1]
+
         if tof_list == [] or seg_list ==[] or msk_list == []:
             print(f'Warning: {name} has {tof_list}, {seg_list}, {msk_list}')
             continue
+
         if len(tof_list)>1 or len(seg_list) > 1 or len(msk_list)>1:
             print(f'Warning: {name} has thr len:{len(tof_list)} and seg len:{len(seg_list)} and msk len:{len(msk_list)}')
+
         data_pair = {'name': name,
                      'imag': os.path.join(path_data, tof_list[0]),
                      'mask': os.path.join(path_data, msk_list[0]),

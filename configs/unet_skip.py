@@ -9,7 +9,7 @@ import torch
 
 
 #---------- names
-which_net       = 'unet_skip_connections' 
+which_net       = 'unet_skip_connections' # UNet3D with skip connections and (1, 2, 4, 16, 32) filters
 
 # The .json file contains a dict with keys in format *_data. 
 # Each key corresponds to training, validation and test set

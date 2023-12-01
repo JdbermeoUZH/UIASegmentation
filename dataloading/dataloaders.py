@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 import random
 import numpy as np
@@ -42,6 +44,7 @@ def get_dataloader_single(type_of_loader,
                           shuffle, 
                           num_workers,
                           config):
+    # TODO: turn this into a strategy pattern
     # get transforms and dataset class
     if type_of_loader == 'train':
         if config.use_patches == True:
@@ -111,11 +114,17 @@ def get_transform_test(config):
 
 def get_label_transform(experiment_type):
     if experiment_type == 'binary_class':
-        transforms = ComposeTransforms([BinarizeSegmentation()])
+        # Binary class in which the aneurysm is the only target
+        transforms = ComposeTransforms([BinarizeSegmentation(specific_label=4)])
         return transforms
+
+    elif experiment_type == 'binary_class_all_vessels':
+        # Binary class in which all vessels are the target
+        transforms = ComposeTransforms([BinarizeSegmentation(specific_label=4)])
+
     elif experiment_type == 'three_class':
         # hard code aneyrism type = label 4
-        transforms = ComposeTransforms([CollapseLabels([i for i in range(1,22) if i != 4]),
+        transforms = ComposeTransforms([CollapseLabels([i for i in range(1, 22) if i != 4]),
                                         MapLabel(target_label = 4, new_label = 2),
                                         OneHotEncode(num_classes = 3)])
         return transforms
@@ -358,20 +367,26 @@ class RandomElastic():
 
 #---------- Label Transformations
 class BinarizeSegmentation():
-    def __init__(self):
-        pass
-    
+    """
+    This creates an aneurysm only target
+    """
+    def __init__(self, specific_label: Optional[int] = None):
+        self.specific_label = specific_label
+
     def __call__(self, item):
         segm         = item['segm']
         
         #--- only for testing
         item['segm_before_bin'] = segm
         #only for testing ---
-        
-        #segm         = torch.where(segm > 0, 1, 0)
-        segm         = torch.where(segm == 4, 1, 0)
+
+        if self.specific_label is not None:
+            segm      = torch.where(segm == self.specific_label, 1, 0)
+        else:
+            segm      = torch.where(segm > 0, 1, 0)
 
         item['segm'] = segm
+
         return item
 
 class CollapseLabels():

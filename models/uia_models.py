@@ -202,6 +202,9 @@ class UNetDecoder_noskips(nn.Module):
 
 # no skip connections
 class SimpleUNet3D(nn.Module):
+    """
+    It is exactly the same as
+    """
     def __init__(self, activation_func, in_channels, out_channels = 1, exp_type=''):
         super().__init__()
         self.exp_type     = exp_type
@@ -242,6 +245,9 @@ class SimpleUNet3D(nn.Module):
 
 # with skip connections
 class UNet3D(nn.Module):
+    """
+    Exactly like vanilla but with skip connections and a higher number of channels for the last two downsampling layers
+    """
     def __init__(self, activation_func, in_channels, out_channels = 1, exp_type=''):
         super().__init__()
         self.exp_type     = exp_type

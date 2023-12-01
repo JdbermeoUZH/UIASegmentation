@@ -227,4 +227,5 @@ class UIA_Dataset(Dataset):
         
         if self.experiment == 'binary_class':
             return torch.tensor([0]), new_item['imag'].unsqueeze(0), torch.tensor([0]), new_item['segm'].unsqueeze(0)
+
         return torch.tensor([0]), new_item['imag'].unsqueeze(0), torch.tensor([0]), new_item['segm']

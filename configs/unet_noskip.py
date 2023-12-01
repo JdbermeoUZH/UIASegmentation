@@ -9,7 +9,7 @@ import torch
 
 
 #---------- names
-which_net           = 'unet_no_skip_connections'
+which_net           = 'unet_no_skip_connections' # UNet3D without skip connections and (1, 2, 4, 8, 16) filters
 # The .json file contains a dict with keys in format *_data. 
 # Each key corresponds to training, validation and test set
 splits_name     = 'usz_kfold_5.json'

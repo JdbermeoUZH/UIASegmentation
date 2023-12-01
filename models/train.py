@@ -42,7 +42,7 @@ def train_v1(model,
         running_loss_train = 0.0
         # each batch contains n_images, n_patches, 1 channel, patch_size_x, patch_size_y, patch_size_z
         with tqdm(train_dataloader, unit='batch') as tqdm_loader:
-            for adj_mtx, node_fts, adj_mtx_gt, node_fts_gt in tqdm_loader:
+            for _, node_fts, _, node_fts_gt in tqdm_loader:
                 train_counter += 1
                 node_fts       = node_fts.to(device)
                 node_fts_gt    = node_fts_gt.to(device)
@@ -52,7 +52,7 @@ def train_v1(model,
                 optimizer.zero_grad()
                 node_fts    = node_fts.view(batch_shape[0]*batch_shape[1], batch_shape[2], batch_shape[3], batch_shape[4], batch_shape[5])
                 batch_preds = []
-                minibatch   = 256
+                minibatch   = 256   # TODO: Make this into a config parameter
                 idx         = 0
                 # pass all patches through the unet
                 while True:
