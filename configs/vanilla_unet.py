@@ -35,8 +35,8 @@ experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
 
 
 #---------- paths
-path_data                 = f'/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed/USZ_BrainArtery/USZ_BrainArtery_GNN/{folder_name}'
-path_splits               = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/datasets/{splits_name}'
+path_data                 = f'/usr/bmicnas02/data-biwi-01/bmicdatasets-originals/Originals/USZ_BrainArtery/Processed/{folder_name}'
+path_splits               = f'/scratch_net/biwidl319/jbermeo/Documents/masters_thesis/UIASegmentation/'
 path_results              = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results'
 path_to_models            = f'/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed/USZ_BrainArtery/USZ_BrainArtery_GNN/models'
 
