@@ -13,7 +13,7 @@ which_net       = 'unet_baseline'  # UNet3D with skip connections and (1, 2, 4, 
 
 # The .json file contains a dict with keys in format *_data. 
 # Each key corresponds to training, validation and test set
-splits_name     = 'usz_kfold_5.json'
+splits_name     = 'train_test_split_juan.json'
 train_data_name = 'train_data'
 valid_data_name = 'valid_data'
 test_data_name  = 'test_data'
@@ -26,9 +26,10 @@ folder_name     = 'hdf5_dataset'
 #---------- experiments
 exp_name        = 'nodiceforback_f0_50'
 
-#experiment_type = 'binary_class' # choose between 'binary_class' or 'three_class' or 'multi_class' 
-experiment_type = 'three_class' # choose between 'binary_class' or 'three_class' or 'multi_class' 
-#experiment_type = 'multi_class' # choose between 'binary_class' or 'three_class' or 'multi_class' 
+experiment_type = 'binary_class_all_vessels'    # for all vessels
+#experiment_type = 'binary_class'               # for aneurysm only
+#experiment_type = 'three_class'                # for background, vessels, aneurysm
+#experiment_type = 'multi_class'                # for all classes 
 
 timestamp       = int(time.time())
 experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'

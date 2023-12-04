@@ -17,8 +17,8 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 from preprocessing_utils import get_subjects_folders, find_types_of_aneurysm
 
 ## paths
-save_path       = "/scratch/kvergopoulos/SemesterProject/datasets"
-path_to_dataset = "/scratch/kvergopoulos/SemesterProject/datasets/USZ_BrainArtery_Originals"
+save_path       = "/scratch/jbermeo/UIASegmentation/configs"
+path_to_dataset = "/usr/bmicnas02/data-biwi-01/bmicdatasets-originals/Originals/USZ_BrainArtery"
 
 # possible aneurysm classes, given by Elisa
 aneurysm_classes = ['mca', 'acomm', 'ica', 'pcomm', 'pica', 'aca', 

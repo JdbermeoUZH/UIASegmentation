@@ -303,7 +303,7 @@ class UNetDecoder(nn.Module):
         self.up1   = Up(self.n4, self.n3, self.n3, self.act)
         self.up2   = Up(self.n3, self.n2, self.n2, self.act)
         self.up3   = Up(self.n2, self.n1, self.n1, self.act)
-        if 'binary_class' in self.exp_type: :
+        if 'binary_class' in self.exp_type:
             self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid')
         elif self.exp_type == 'three_class':
             self.outc  = OutConv(self.n1, self.out_channels, 'softmax')
