@@ -13,7 +13,7 @@ which_net       = 'unet_baseline'  # UNet3D with skip connections and (1, 2, 4, 
 
 # The .json file contains a dict with keys in format *_data. 
 # Each key corresponds to training, validation and test set
-splits_name     = 'k_fold_val5.json'
+splits_name     = 'usz_kfold_5.json'
 train_data_name = 'train_data'
 valid_data_name = 'valid_data'
 test_data_name  = 'test_data'
@@ -37,16 +37,16 @@ experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
 
 #---------- paths
 path_data                 = f"/home/juanbermeo/Documents/Master's Thesis/data/preprocessed/kostas/{folder_name}"
-path_splits               = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/configs/{splits_name}'
-path_results              = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results'
-path_to_models            = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results/models'
+path_splits               = f"/home/juanbermeo/Documents/Master's Thesis/UIASegmentation/configs/{splits_name}"
+path_results              = f"/home/juanbermeo/Documents/Master's Thesis/UIASegmentation/configs/results"
+path_to_models            = f"/home/juanbermeo/Documents/Master's Thesis/UIASegmentation/configs/results/models"
 
 
 #---------- variables
 shuffle_train      = True
 shuffle_validation = True
 shuffle_test       = False
-device             = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device             = 'cpu' #torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 num_workers        = 2
 
 #---------- Hyperparameters 
@@ -73,8 +73,8 @@ use_early_stopping  = True
 patience            = 20
 activation_function = 'relu'
 
-#output_channels     = 1
-output_channels     = 3
+output_channels     = 1
+#output_channels     = 3
 #output_channels     = 22
 
 which_optimizer     = 'adam'
