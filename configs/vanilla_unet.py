@@ -13,7 +13,7 @@ which_net       = 'unet_baseline'  # UNet3D with skip connections and (1, 2, 4, 
 
 # The .json file contains a dict with keys in format *_data. 
 # Each key corresponds to training, validation and test set
-splits_name     = 'train_test_split_juan.json'
+splits_name     = 'k_fold_val5.json'
 train_data_name = 'train_data'
 valid_data_name = 'valid_data'
 test_data_name  = 'test_data'
@@ -26,8 +26,8 @@ folder_name     = 'hdf5_dataset'
 #---------- experiments
 exp_name        = 'nodiceforback_f0_50'
 
-experiment_type = 'binary_class_all_vessels'    # for all vessels
-#experiment_type = 'binary_class'               # for aneurysm only
+#experiment_type = 'binary_class_all_vessels'    # for all vessels
+experiment_type = 'binary_class'               # for aneurysm only
 #experiment_type = 'three_class'                # for background, vessels, aneurysm
 #experiment_type = 'multi_class'                # for all classes 
 
@@ -83,5 +83,5 @@ use_scheduler       = False
 which_scheduler     = 'r' # options are: 'reduce_lr_on_plateau', 'one_cylce_lr', 'step_lr'
 weight_decay        = 0.001
 
-#which_loss          = 'dice_loss'
-which_loss          = 'multidice_loss'
+which_loss          = 'dice_loss'
+#which_loss          = 'multidice_loss'
