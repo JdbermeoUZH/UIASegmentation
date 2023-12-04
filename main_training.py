@@ -8,6 +8,7 @@ from general_utils import MYParser
 from dataloading import dataloaders
 from models import model_utils as mu
 
+
 def main():
     
     config      = MYParser.MyParser()
@@ -108,6 +109,7 @@ def main():
 
     print("INFO: training ended... exiting")
     return
+
 
 # entry point
 if __name__ == '__main__':  

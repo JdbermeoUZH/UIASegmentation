@@ -13,21 +13,21 @@ which_net       = 'unet_baseline'  # UNet3D with skip connections and (1, 2, 4, 
 
 # The .json file contains a dict with keys in format *_data. 
 # Each key corresponds to training, validation and test set
-splits_name     = 'usz_kfold_5.json'
+splits_name     = 'k_fold_val5.json'
 train_data_name = 'train_data'
 valid_data_name = 'valid_data'
 test_data_name  = 'test_data'
 fold_id         = 0
 
 # folder name of the dataset
-folder_name     = 'hdf5_dataset'
+folder_name     = 'hdf5_dataset_sample'
 
 
 #---------- experiments
 exp_name        = 'nodiceforback_f0_50'
 
-#experiment_type = 'binary_class_all_vessels'    # for all vessels
-experiment_type = 'binary_class'               # for aneurysm only
+experiment_type = 'binary_class_all_vessels'    # for all vessels
+#experiment_type = 'binary_class'               # for aneurysm only
 #experiment_type = 'three_class'                # for background, vessels, aneurysm
 #experiment_type = 'multi_class'                # for all classes 
 
@@ -36,10 +36,10 @@ experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
 
 
 #---------- paths
-path_data                 = f'/usr/bmicnas02/data-biwi-01/bmicdatasets-originals/Originals/USZ_BrainArtery/Processed/{folder_name}'
-path_splits               = f"/home/juanbermeo/Documents/Master's Thesis/UIASegmentation/configs/{splits_name}"
-path_results              = f"/home/juanbermeo/Documents/Master's Thesis/UIASegmentation/configs/results"
-path_to_models            = f"/home/juanbermeo/Documents/Master's Thesis/UIASegmentation/configs/results/models"
+path_data                 = f"/home/juanbermeo/Documents/Master's Thesis/data/preprocessed/kostas/{folder_name}"
+path_splits               = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/configs/{splits_name}'
+path_results              = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results'
+path_to_models            = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results/models'
 
 
 #---------- variables
