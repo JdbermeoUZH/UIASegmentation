@@ -451,7 +451,7 @@ class MetricsClass():
         
         self.avg_results = None
         self.results     = dict()
-        if self.experiment_type == 'binary_class':
+        if 'binary_class' in self.experiment_type:
             for key in self.metrics.keys(): self.results[key] = []
         else:
             for key in self.metrics.keys():
@@ -476,7 +476,7 @@ class MetricsClass():
                         # deprecated
                         res = func(node_preds[image], node_targets[image])
                     else:
-                        if self.experiment_type == 'binary_class':
+                        if 'binary_class' in self.experiment_type:
                             res = func(preds_bin, target_bin)
                         elif self.experiment_type == 'three_class':
                             res_aneur = func(preds_bin[:,2,:,:,:], target_bin[:,2,:,:,:])
@@ -491,7 +491,7 @@ class MetricsClass():
                 if isinstance(res, torch.Tensor):   res = res.cpu().item()
                 self.results[key].append(res)
 
-                if self.experiment_type != 'binary_class':  
+                if 'binary_class' not in self.experiment_type:
                     if isinstance(res_aneur, torch.Tensor):   res_aneur = res_aneur.cpu().item()
                     self.results[key+'_aneur'].append(res_aneur)
             
@@ -530,7 +530,10 @@ class MetricsClass():
 def binarize_image(img, threshold = 0.5, one_hot = False):
     if img.ndim == 4:
        img = img.unsqueeze(0)
-    
+
+    elif img.ndim == 3:
+        img = img[None, None, :, :, :]
+
     assert img.ndim == 5, f'Binarize_image, tensor mismatch {img.shape}'
 
     n_channels = img.shape[1]
