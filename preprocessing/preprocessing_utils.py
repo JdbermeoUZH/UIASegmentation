@@ -133,7 +133,7 @@ def get_subjects_folders(path_to_data):
     subjects_paths_list = list()
     for mri_file in os.listdir(path_to_data):
         mri_file_path = os.path.join(path_to_data, mri_file)
-        if os.path.isdir(mri_file_path) and not mri_file.startswith('.') \
+        if os.path.isdir(mri_file_path) and not mri_file.startswith('.') and mri_file_path != 'Processed'\
             and not mri_file.find("unlabelled") != -1 and not mri_file.find("temp_folder") != -1:
             subjects_paths_list.append(mri_file_path)
     return subjects_paths_list
