@@ -223,7 +223,7 @@ class SimpleUNet3D(nn.Module):
         self.up1   = Up_noskip(self.n4, self.n3, self.act)
         self.up2   = Up_noskip(self.n3, self.n2, self.act)
         self.up3   = Up_noskip(self.n2, self.n1, self.act)
-        if self.exp_type == 'binary_class':
+        if 'binary_class' in self.exp_type:
             self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid')         
         elif self.exp_type == 'three_class':
             self.outc  = OutConv(self.n1, self.out_channels, 'softmax')
@@ -231,7 +231,7 @@ class SimpleUNet3D(nn.Module):
             print(f'INFO: In UNET-DECODER use {self.act} as activation layer in the last layer')
             self.outc = OutConv(self.n1, self.out_channels, self.act)
 
-    def forward(self, x):
+    def foriward(self, x):
         x = self.inc(x)
         x = self.down1(x)
         x = self.down2(x)
@@ -268,7 +268,7 @@ class UNet3D(nn.Module):
         self.up1   = Up(self.n4, self.n3, self.n3, self.act)
         self.up2   = Up(self.n3, self.n2, self.n2, self.act)
         self.up3   = Up(self.n2, self.n1, self.n1, self.act)
-        if self.exp_type == 'binary_class':
+        if 'binary_class' in self.exp_type: 
             self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid')
         elif self.exp_type == 'three_class':
             self.outc  = OutConv(self.n1, self.out_channels, 'softmax')
@@ -303,7 +303,7 @@ class UNetDecoder(nn.Module):
         self.up1   = Up(self.n4, self.n3, self.n3, self.act)
         self.up2   = Up(self.n3, self.n2, self.n2, self.act)
         self.up3   = Up(self.n2, self.n1, self.n1, self.act)
-        if self.exp_type == 'binary_class':
+        if 'binary_class' in self.exp_type: :
             self.outc  = OutConv(self.n1, self.out_channels, 'sigmoid')
         elif self.exp_type == 'three_class':
             self.outc  = OutConv(self.n1, self.out_channels, 'softmax')

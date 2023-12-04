@@ -23,7 +23,7 @@ fold_id         = 0
 folder_name     = 'hdf5_dataset'
 
 
-#---------- experiment
+#---------- experiments
 exp_name        = 'nodiceforback_f0_50'
 
 #experiment_type = 'binary_class' # choose between 'binary_class' or 'three_class' or 'multi_class' 
@@ -36,9 +36,9 @@ experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
 
 #---------- paths
 path_data                 = f'/usr/bmicnas02/data-biwi-01/bmicdatasets-originals/Originals/USZ_BrainArtery/Processed/{folder_name}'
-path_splits               = f'/scratch_net/biwidl319/jbermeo/Documents/masters_thesis/UIASegmentation/'
+path_splits               = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/configs/{splits_name}'
 path_results              = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results'
-path_to_models            = f'/usr/bmicnas01/data-biwi-01/bmicdatasets/Processed/USZ_BrainArtery/USZ_BrainArtery_GNN/models'
+path_to_models            = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results/models'
 
 
 #---------- variables
