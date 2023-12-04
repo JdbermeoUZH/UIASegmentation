@@ -32,9 +32,9 @@ experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
 
 #---------- paths
 path_data                 = f'/usr/bmicnas02/data-biwi-01/bmicdatasets-originals/Originals/USZ_BrainArtery/Processed/{folder_name}'
-path_splits               = f"/home/juanbermeo/Documents/Master's Thesis/UIASegmentation/configs/{splits_name}"
-path_results              = f"/home/juanbermeo/Documents/Master's Thesis/UIASegmentation/configs/results"
-path_to_models            = f"/home/juanbermeo/Documents/Master's Thesis/UIASegmentation/configs/results/models"
+path_splits               = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/configs/{splits_name}'
+path_results              = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results'
+path_to_models            = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results/models'
 
 
 
