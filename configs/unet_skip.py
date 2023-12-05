@@ -24,7 +24,7 @@ folder_name     = 'hdf5_dataset'
 
 
 #---------- experiment
-exp_name        = 'unet'
+exp_name        = 'unet_skip_binary_class'
 experiment_type = 'binary_class' # choose between 'binary_class' or 'three_class' or 'multi_class' 
 timestamp       = int(time.time())
 experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
@@ -33,8 +33,8 @@ experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
 #---------- paths
 path_data                 = f'/usr/bmicnas02/data-biwi-01/bmicdatasets-originals/Originals/USZ_BrainArtery/Processed/{folder_name}'
 path_splits               = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/configs/{splits_name}'
-path_results              = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results'
-path_to_models            = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results/models'
+path_results              = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/results/unet_skip'
+path_to_models            = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/results/models/unet_skip'
 
 
 

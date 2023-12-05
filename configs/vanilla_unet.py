@@ -24,10 +24,10 @@ folder_name     = 'hdf5_dataset'
 
 
 #---------- experiments
-exp_name        = 'binary_class_all_vessels_50_epochs'
+exp_name        = 'binary_class_vessels_50_epochs'
 
-experiment_type = 'binary_class_all_vessels'    # for all vessels
-#experiment_type = 'binary_class'               # for aneurysm only
+#experiment_type = 'binary_class_all_vessels'    # for all vessels
+experiment_type = 'binary_class'                # for aneurysm only
 #experiment_type = 'three_class'                # for background, vessels, aneurysm
 #experiment_type = 'multi_class'                # for all classes 
 
@@ -38,8 +38,8 @@ experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
 #---------- paths
 path_data                 = f'/usr/bmicnas02/data-biwi-01/bmicdatasets-originals/Originals/USZ_BrainArtery/Processed/{folder_name}'
 path_splits               = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/configs/{splits_name}'
-path_results              = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/results'
-path_to_models            = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/results/models'
+path_results              = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/results/vanilla_unet'
+path_to_models            = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/results/models/vanilla_unet'
 
 
 #---------- variables
