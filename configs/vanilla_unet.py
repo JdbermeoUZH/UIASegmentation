@@ -24,10 +24,10 @@ folder_name     = 'hdf5_dataset'
 
 
 #---------- experiments
-exp_name        = 'nodiceforback_f0_50'
+exp_name        = 'binary_class_all_vessels_50_epochs'
 
-#experiment_type = 'binary_class_all_vessels'    # for all vessels
-experiment_type = 'binary_class'               # for aneurysm only
+experiment_type = 'binary_class_all_vessels'    # for all vessels
+#experiment_type = 'binary_class'               # for aneurysm only
 #experiment_type = 'three_class'                # for background, vessels, aneurysm
 #experiment_type = 'multi_class'                # for all classes 
 
@@ -38,8 +38,8 @@ experiment_name = f'{exp_name}_{experiment_type}_{which_net}_{timestamp}'
 #---------- paths
 path_data                 = f'/usr/bmicnas02/data-biwi-01/bmicdatasets-originals/Originals/USZ_BrainArtery/Processed/{folder_name}'
 path_splits               = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/configs/{splits_name}'
-path_results              = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results'
-path_to_models            = f'/scratch_net/biwidl210/kvergopoulos/SemesterProject/results/models'
+path_results              = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/results'
+path_to_models            = f'/scratch_net/biwidl319/jbermeo/UIASegmentation/results/models'
 
 
 #---------- variables
@@ -73,8 +73,8 @@ use_early_stopping  = True
 patience            = 20
 activation_function = 'relu'
 
-#output_channels     = 1
-output_channels     = 3
+output_channels     = 1
+#output_channels     = 3
 #output_channels     = 22
 
 which_optimizer     = 'adam'
