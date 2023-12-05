@@ -120,7 +120,7 @@ def get_label_transform(experiment_type):
 
     elif experiment_type == 'binary_class_all_vessels':
         # Binary class in which all vessels are the target
-        transforms = ComposeTransforms([BinarizeSegmentation(specific_label=4)])
+        transforms = ComposeTransforms([BinarizeSegmentation()])
         return transforms
 
     elif experiment_type == 'three_class':
